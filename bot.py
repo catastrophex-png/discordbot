@@ -57,10 +57,10 @@ class TTT(discord.ui.View):
 
         async def callback(interaction):
             if interaction.user != self.players[self.turn]:
-                return await interaction.response.send_message("Не твой ход", ephemeral=True)
+                return await interaction.response.send_message("Псина не твой ход", ephemeral=True)
 
             if self.board[i] != " ":
-                return await interaction.response.send_message("Уже занято", ephemeral=True)
+                return await interaction.response.send_message("Занято нахуй", ephemeral=True)
 
             # обновляем состояние
             self.board[i] = "❌" if self.turn == 0 else "⭕"
