@@ -23,11 +23,11 @@ def check(board):
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
         super().__init__(timeout=None)
+
         self.board = [" "] * 9
         self.players = [p1, p2]
         self.turn = 0
 
-        # создаём кнопки 3x3 сразу
         for i in range(9):
             self.add_item(self.make_button(i))
 
@@ -54,8 +54,8 @@ class TTT(discord.ui.View):
             winner = check(self.board)
 
             if winner:
-                for child in self.children:
-                    child.disabled = True
+                for c in self.children:
+                    c.disabled = True
 
                 return await interaction.response.edit_message(
                     content=f"🏆 Победитель: {interaction.user.mention}",
@@ -63,8 +63,8 @@ class TTT(discord.ui.View):
                 )
 
             if " " not in self.board:
-                for child in self.children:
-                    child.disabled = True
+                for c in self.children:
+                    c.disabled = True
 
                 return await interaction.response.edit_message(
                     content="🤝 Ничья",
@@ -96,7 +96,7 @@ class TTT(discord.ui.View):
 async def ttt(ctx, opponent: discord.Member):
     game = TTT(ctx.author, opponent)
     await ctx.send(
-        f"{ctx.author.mention} vs {opponent.mention}",
+        f"🎮 {ctx.author.mention} vs {opponent.mention}",
         view=game
     )
 
