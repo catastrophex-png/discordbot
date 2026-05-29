@@ -27,25 +27,18 @@ class TTT(discord.ui.View):
         self.players = [p1, p2]
         self.turn = 0
 
-    def draw(self):
+def draw(self):
     b = self.board
-
-    def cell(x):
-        return x if x != " " else "⬜"
-
     return f"""
-{cell(b[0])} ┃ {cell(b[1])} ┃ {cell(b[2])}
-━━━╋━━━╋━━━
-{cell(b[3])} ┃ {cell(b[4])} ┃ {cell(b[5])}
-━━━╋━━━╋━━━
-{cell(b[6])} ┃ {cell(b[7])} ┃ {cell(b[8])}
+{b[0]} | {b[1]} | {b[2]}
+{b[3]} | {b[4]} | {b[5]}
+{b[6]} | {b[7]} | {b[8]}
 """
 
     def make_button(self, i):
         btn = discord.ui.Button(
     label=" ",
-    style=discord.ButtonStyle.secondary,
-    row=i // 3
+    style=discord.ButtonStyle.secondary
 )
 
         async def callback(interaction):
