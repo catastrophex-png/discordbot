@@ -20,22 +20,39 @@ def check(board):
     return None
 
 
+def render(board):
+    b = board
+    return f"""
+{b[0]} ┃ {b[1]} ┃ {b[2]}
+━━━╋━━━╋━━━
+{b[3]} ┃ {b[4]} ┃ {b[5]}
+━━━╋━━━╋━━━
+{b[6]} ┃ {b[7]} ┃ {b[8]}
+"""
+
+
 class TTT(discord.ui.View):
-    def __init__(self, p1, p2):
+    def __init__(self, p1, p2, board=None, turn=0):
         super().__init__(timeout=None)
 
-        self.board = [" "] * 9
         self.players = [p1, p2]
-        self.turn = 0
+        self.board = board or [" "] * 9
+        self.turn = turn
 
+        # создаём кнопки заново КАЖДЫЙ РАЗ (ВАЖНО)
         for i in range(9):
             self.add_item(self.make_button(i))
 
     def make_button(self, i):
+        mark = self.board[i]
+
+        label = mark if mark != " " else "⬜"
+
         btn = discord.ui.Button(
-            label="⬜",
+            label=label,
             style=discord.ButtonStyle.secondary,
-            row=i // 3
+            row=i // 3,
+            disabled=(mark != " ")
         )
 
         async def callback(interaction):
@@ -45,59 +62,55 @@ class TTT(discord.ui.View):
             if self.board[i] != " ":
                 return await interaction.response.send_message("Уже занято", ephemeral=True)
 
-            mark = "❌" if self.turn == 0 else "⭕"
-            self.board[i] = mark
-
-            btn.label = mark
-            btn.disabled = True
+            # обновляем состояние
+            self.board[i] = "❌" if self.turn == 0 else "⭕"
 
             winner = check(self.board)
 
+            # победа
             if winner:
-                for c in self.children:
-                    c.disabled = True
+                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+
+                for child in new_view.children:
+                    child.disabled = True
 
                 return await interaction.response.edit_message(
-                    content=f"🏆 Победитель: {interaction.user.mention}",
-                    view=self
+                    content=f"🏆 Победитель: {interaction.user.mention}\n\n{render(self.board)}",
+                    view=new_view
                 )
 
+            # ничья
             if " " not in self.board:
-                for c in self.children:
-                    c.disabled = True
+                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+
+                for child in new_view.children:
+                    child.disabled = True
 
                 return await interaction.response.edit_message(
-                    content="🤝 Ничья",
-                    view=self
+                    content=f"🤝 Ничья\n\n{render(self.board)}",
+                    view=new_view
                 )
 
-            self.turn = 1 - self.turn
+            # следующий ход (ВАЖНО: создаём новый view)
+            next_turn = 1 - self.turn
+            new_view = TTT(self.players[0], self.players[1], self.board, next_turn)
 
             await interaction.response.edit_message(
-                content=self.draw(),
-                view=self
+                content=render(self.board),
+                view=new_view
             )
 
         btn.callback = callback
         return btn
 
-    def draw(self):
-        b = self.board
-        return f"""
-{b[0]} ┃ {b[1]} ┃ {b[2]}
-━━━╋━━━╋━━━
-{b[3]} ┃ {b[4]} ┃ {b[5]}
-━━━╋━━━╋━━━
-{b[6]} ┃ {b[7]} ┃ {b[8]}
-"""
-
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-    game = TTT(ctx.author, opponent)
+    view = TTT(ctx.author, opponent)
+
     await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}",
-        view=game
+        f"🎮 {ctx.author.mention} vs {opponent.mention}\n\n{render(view.board)}",
+        view=view
     )
 
 
