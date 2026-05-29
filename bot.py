@@ -22,24 +22,21 @@ def check(board):
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
-        super().__init__()
+        super().__init__(timeout=None)
         self.board = [" "] * 9
         self.players = [p1, p2]
         self.turn = 0
 
-def draw(self):
-    b = self.board
-    return f"""
-{b[0]} | {b[1]} | {b[2]}
-{b[3]} | {b[4]} | {b[5]}
-{b[6]} | {b[7]} | {b[8]}
-"""
+        # создаём кнопки 3x3 сразу
+        for i in range(9):
+            self.add_item(self.make_button(i))
 
     def make_button(self, i):
         btn = discord.ui.Button(
-    label=" ",
-    style=discord.ButtonStyle.secondary
-)
+            label="⬜",
+            style=discord.ButtonStyle.secondary,
+            row=i // 3
+        )
 
         async def callback(interaction):
             if interaction.user != self.players[self.turn]:
@@ -48,20 +45,30 @@ def draw(self):
             if self.board[i] != " ":
                 return await interaction.response.send_message("Уже занято", ephemeral=True)
 
-            self.board[i] = "❌" if self.turn == 0 else "⭕"
+            mark = "❌" if self.turn == 0 else "⭕"
+            self.board[i] = mark
+
+            btn.label = mark
+            btn.disabled = True
 
             winner = check(self.board)
 
             if winner:
+                for child in self.children:
+                    child.disabled = True
+
                 return await interaction.response.edit_message(
                     content=f"🏆 Победитель: {interaction.user.mention}",
-                    view=None
+                    view=self
                 )
 
             if " " not in self.board:
+                for child in self.children:
+                    child.disabled = True
+
                 return await interaction.response.edit_message(
                     content="🤝 Ничья",
-                    view=None
+                    view=self
                 )
 
             self.turn = 1 - self.turn
@@ -74,20 +81,24 @@ def draw(self):
         btn.callback = callback
         return btn
 
-    async def start(self, ctx):
-        for i in range(9):
-            self.add_item(self.make_button(i))
-
-        await ctx.send(
-            f"{self.players[0].mention} vs {self.players[1].mention}\n\n{self.draw()}",
-            view=self
-        )
+    def draw(self):
+        b = self.board
+        return f"""
+{b[0]} ┃ {b[1]} ┃ {b[2]}
+━━━╋━━━╋━━━
+{b[3]} ┃ {b[4]} ┃ {b[5]}
+━━━╋━━━╋━━━
+{b[6]} ┃ {b[7]} ┃ {b[8]}
+"""
 
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
     game = TTT(ctx.author, opponent)
-    await game.start(ctx)
+    await ctx.send(
+        f"{ctx.author.mention} vs {opponent.mention}",
+        view=game
+    )
 
 
 @bot.command()
