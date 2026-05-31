@@ -10,13 +10,12 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- LEVEL CHANNEL ----------------
+# ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
+DATA_FILE = "data.json"
 
 # ---------------- DATA ----------------
-
-DATA_FILE = "data.json"
 
 def load_data():
     try:
@@ -35,57 +34,40 @@ def xp_needed(level):
     return 100 + level * 50
 
 def get_rank(level):
-    if level < 5:
-        return "🧱 Cardboard"
-    elif level < 10:
-        return "🧴 Plastic"
-    elif level < 20:
-        return "🟤 Bronze"
-    elif level < 30:
-        return "⚙️ Iron"
-    elif level < 40:
-        return "🥇 Gold"
-    elif level < 55:
-        return "💎 Diamond"
-    elif level < 70:
-        return "🧙 Master"
+    if level < 5: return "🧱 Cardboard"
+    if level < 10: return "🧴 Plastic"
+    if level < 20: return "🟤 Bronze"
+    if level < 30: return "⚙️ Iron"
+    if level < 40: return "🥇 Gold"
+    if level < 55: return "💎 Diamond"
+    if level < 70: return "🧙 Master"
     return "🕳 Dungeon Master"
 
 def get_title(level):
-    if level < 3:
-        return "Личинус"
-    elif level < 7:
-        return "Бывалый"
-    elif level < 12:
-        return "На опыте"
-    elif level < 18:
-        return "Пизделка"
-    elif level < 25:
-        return "Пиздец"
-    elif level < 35:
-        return "Ебланище"
-    elif level < 50:
-        return "Животное"
+    if level < 3: return "Личинус"
+    if level < 7: return "Бывалый"
+    if level < 12: return "На опыте"
+    if level < 18: return "Пизделка"
+    if level < 25: return "Пиздец"
+    if level < 35: return "Ебланище"
+    if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL UP IMAGE ----------------
+# ---------------- LEVEL UP ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
     if not channel:
         return
 
-    rank = get_rank(level)
-    title = get_title(level)
-
     img = Image.new("RGB", (600, 250), (25, 25, 25))
     draw = ImageDraw.Draw(img)
 
     draw.text((20, 30), "LEVEL UP!", fill="white")
-    draw.text((20, 80), f"{user.name}", fill="white")
+    draw.text((20, 80), user.name, fill="white")
     draw.text((20, 120), f"Level: {level}", fill="white")
-    draw.text((20, 160), f"{rank}", fill="gold")
-    draw.text((20, 200), f"{title}", fill="orange")
+    draw.text((20, 160), get_rank(level), fill="gold")
+    draw.text((20, 200), get_title(level), fill="orange")
 
     path = f"levelup_{user.id}.png"
     img.save(path)
@@ -95,34 +77,38 @@ async def send_level_up(user, level):
         file=discord.File(path)
     )
 
-# ---------------- XP ON MESSAGE ----------------
+# ---------------- XP LOGIC (SAFE) ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
+    try:
+        data = load_data()
+        uid = str(message.author.id)
+
+        if uid not in data:
+            data[uid] = {"xp": 0, "level": 1}
+
+        data[uid]["xp"] += random.randint(5, 15)
+
+        level = data[uid]["level"]
+        xp = data[uid]["xp"]
+
+        if xp >= xp_needed(level):
+            data[uid]["level"] += 1
+            data[uid]["xp"] = 0
+            await send_level_up(message.author, data[uid]["level"])
+
+        save_data(data)
+
+    except Exception as e:
+        print("XP ERROR:", e)
+
     await bot.process_commands(message)
 
-    user_id = str(message.author.id)
-    data = load_data()
-
-    if user_id not in data:
-        data[user_id] = {"xp": 0, "level": 1}
-
-    data[user_id]["xp"] += random.randint(5, 15)
-
-    level = data[user_id]["level"]
-    xp = data[user_id]["xp"]
-
-    if xp >= xp_needed(level):
-        data[user_id]["level"] += 1
-        data[user_id]["xp"] = 0
-        await send_level_up(message.author, data[user_id]["level"])
-
-    save_data(data)
-
-# ---------------- TTT LOGIC ----------------
+# ---------------- TIC TAC TOE ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -146,7 +132,7 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
-# ---------------- TTT (FIXED, NO DUPLICATES) ----------------
+# ---------------- TTT VIEW (FIXED NO DUPLICATES) ----------------
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
@@ -156,9 +142,9 @@ class TTT(discord.ui.View):
         self.board = [" "] * 9
         self.turn = 0
 
-        self.build_buttons()
+        self.build()
 
-    def build_buttons(self):
+    def build(self):
         self.clear_items()
 
         for i in range(9):
@@ -184,11 +170,10 @@ class TTT(discord.ui.View):
 
                 winner = check(self.board)
 
-                # WIN
                 if winner:
                     give_xp(interaction.user.id, 50)
+                    self.build()
 
-                    self.build_buttons()
                     for b in self.children:
                         b.disabled = True
 
@@ -197,9 +182,9 @@ class TTT(discord.ui.View):
                         view=self
                     )
 
-                # DRAW
                 if " " not in self.board:
-                    self.build_buttons()
+                    self.build()
+
                     for b in self.children:
                         b.disabled = True
 
@@ -208,9 +193,8 @@ class TTT(discord.ui.View):
                         view=self
                     )
 
-                # NEXT TURN
                 self.turn = 1 - self.turn
-                self.build_buttons()
+                self.build()
 
                 return await interaction.response.edit_message(
                     content=f"Ход: {self.players[self.turn].mention}",
@@ -234,49 +218,46 @@ async def ttt(ctx, opponent: discord.Member):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-    user_id = str(member.id)
+    uid = str(member.id)
 
     data = load_data()
 
-    if user_id not in data:
-        data[user_id] = {"xp": 0, "level": 1}
+    if uid not in data:
+        data[uid] = {"xp": 0, "level": 1}
 
-    level = data[user_id]["level"]
-    xp = data[user_id]["xp"]
-
-    needed = xp_needed(level)
+    level = data[uid]["level"]
+    xp = data[uid]["xp"]
 
     await ctx.send(
-        f"📊 **Статистика {member.display_name}**\n\n"
-        f"🏆 Уровень: **{level}**\n"
-        f"✨ XP: **{xp} / {needed}**\n"
-        f"📛 Ранг: **{get_rank(level)}**\n"
-        f"💬 Титул: **{get_title(level)}**"
+        f"📊 **{member.display_name}**\n\n"
+        f"🏆 Level: **{level}**\n"
+        f"✨ XP: **{xp} / {xp_needed(level)}**\n"
+        f"📛 Rank: **{get_rank(level)}**\n"
+        f"💬 Title: **{get_title(level)}**"
     )
-
-@bot.command()
-async def fortuna(ctx):
-    await ctx.send("🔮 Отправляй варианты. Напиши 'готово'")
-
-    variants = []
-
-    def check_msg(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    while True:
-        msg = await bot.wait_for("message", check=check_msg)
-
-        if msg.content.lower() == "готово":
-            break
-
-        variants.append(msg.content)
-
-    winner = random.choice(variants)
-    await ctx.send(f"✨ Победитель: **{winner}** ✨")
 
 @bot.command()
 async def ping(ctx):
     await ctx.send("бот жив 🟢")
+
+@bot.command()
+async def fortuna(ctx):
+    await ctx.send("🔮 Напиши варианты, потом 'готово'")
+
+    variants = []
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    while True:
+        msg = await bot.wait_for("message", check=check)
+        if msg.content.lower() == "готово":
+            break
+        variants.append(msg.content)
+
+    await ctx.send(f"✨ Победитель: **{random.choice(variants)}**")
+
+# ---------------- READY ----------------
 
 @bot.event
 async def on_ready():
