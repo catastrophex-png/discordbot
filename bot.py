@@ -10,18 +10,10 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# ---------------- SETTINGS ----------------
-
-LEVEL_CHANNEL_ID = 1510080367892238336
-DATA_FILE = "data.json"
-
-# ---------------- VOICE TRACK ----------------
-
-voice_activity = {}
-
 # ---------------- DATA ----------------
+
+DATA_FILE = "data.json"
+voice_activity = {}
 
 def load_data():
     try:
@@ -34,7 +26,7 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-# ---------------- XP SYSTEM (UPDATED) ----------------
+# ---------------- XP SYSTEM ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -59,7 +51,19 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL UP IMAGE ----------------
+# ---------------- BOT CLASS (IMPORTANT FIX) ----------------
+
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        self.loop.create_task(voice_xp_loop())
+
+# ---------------- BOT INIT ----------------
+
+bot = MyBot(command_prefix="!", intents=intents)
+
+LEVEL_CHANNEL_ID = 1510080367892238336
+
+# ---------------- LEVEL UP ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -151,8 +155,6 @@ async def voice_xp_loop():
         save_data(data)
         await asyncio.sleep(60)
 
-bot.loop.create_task(voice_xp_loop())
-
 # ---------------- TTT ----------------
 
 WIN = [
@@ -214,8 +216,8 @@ class TTT(discord.ui.View):
 
                 if winner:
                     give_xp(interaction.user.id, 50)
-
                     self.build()
+
                     for b in self.children:
                         b.disabled = True
 
@@ -226,6 +228,7 @@ class TTT(discord.ui.View):
 
                 if " " not in self.board:
                     self.build()
+
                     for b in self.children:
                         b.disabled = True
 
