@@ -122,7 +122,7 @@ async def on_message(message):
 
     save_data(data)
 
-# ---------------- KRESTIKI-NOLIKI ----------------
+# ---------------- KRESTIKI-NOLIKI (FIXED NO DUPLICATES) ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -146,15 +146,13 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
-# ---------------- FIXED TTT (БЕЗ ДУБЛЕЙ) ----------------
-
 class TTT(discord.ui.View):
-    def __init__(self, p1, p2, board=None, turn=0):
+    def __init__(self, p1, p2):
         super().__init__(timeout=None)
 
         self.players = [p1, p2]
-        self.board = board or [" "] * 9
-        self.turn = turn
+        self.board = [" "] * 9
+        self.turn = 0
 
         self.build()
 
@@ -175,13 +173,13 @@ class TTT(discord.ui.View):
             async def callback(interaction, i=i):
                 if interaction.user != self.players[self.turn]:
                     return await interaction.response.send_message(
-                        "Эй псина, не твой ход",
+                        "Не твой ход",
                         ephemeral=True
                     )
 
                 if self.board[i] != " ":
                     return await interaction.response.send_message(
-                        "Занято нахуй",
+                        "Занято",
                         ephemeral=True
                     )
 
@@ -226,12 +224,12 @@ class TTT(discord.ui.View):
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
+    game = TTT(ctx.author, opponent)
 
     await ctx.send(
         f"🎮 {ctx.author.mention} vs {opponent.mention}\n"
         f"Ход: {ctx.author.mention}",
-        view=view
+        view=game
     )
 
 @bot.command()
