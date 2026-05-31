@@ -1,6 +1,8 @@
+```python
 import discord
 from discord.ext import commands
 import os
+import random
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -45,22 +47,20 @@ class TTT(discord.ui.View):
         async def callback(interaction: discord.Interaction):
             if interaction.user != self.players[self.turn]:
                 return await interaction.response.send_message(
-                    "Не твой ход",
+                    "Эй псина, не твой ход",
                     ephemeral=True
                 )
 
             if self.board[i] != " ":
                 return await interaction.response.send_message(
-                    "Клетка занята",
+                    "Занято нахуй",
                     ephemeral=True
                 )
 
-            # ход
             self.board[i] = "❌" if self.turn == 0 else "⭕"
 
             winner = check(self.board)
 
-            # победа
             if winner:
                 new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
                 for child in new_view.children:
@@ -71,7 +71,6 @@ class TTT(discord.ui.View):
                     view=new_view
                 )
 
-            # ничья
             if " " not in self.board:
                 new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
                 for child in new_view.children:
@@ -82,7 +81,6 @@ class TTT(discord.ui.View):
                     view=new_view
                 )
 
-            # следующий ход
             next_turn = 1 - self.turn
             new_view = TTT(self.players[0], self.players[1], self.board, next_turn)
 
@@ -93,6 +91,57 @@ class TTT(discord.ui.View):
 
         btn.callback = callback
         return btn
+
+
+@bot.command(name="фортуна")
+async def fortuna(ctx):
+    await ctx.send(
+        "🔮 **Режим Фортуны запущен!**\n"
+        "Отправляйте варианты по одному сообщению.\n"
+        "Когда закончите, напишите: **готово**"
+    )
+
+    variants = []
+
+    def msg_check(message):
+        return (
+            message.author == ctx.author
+            and message.channel == ctx.channel
+        )
+
+    while True:
+        try:
+            msg = await bot.wait_for(
+                "message",
+                check=msg_check,
+                timeout=300
+            )
+
+            if msg.content.lower().strip() == "готово":
+                break
+
+            variants.append(msg.content.strip())
+
+        except:
+            await ctx.send("⌛ Время ожидания истекло.")
+            return
+
+    if not variants:
+        await ctx.send("❌ Вы не добавили ни одного варианта.")
+        return
+
+    text = "\n".join(f"• {v}" for v in variants)
+
+    await ctx.send(
+        f"🔮 **Варианты собраны:**\n\n{text}\n\n🎲 Крутим колесо..."
+    )
+
+    winner = random.choice(variants)
+
+    await ctx.send(
+        f"🥁🥁🥁\n"
+        f"✨ **Победитель: {winner}** ✨"
+    )
 
 
 @bot.command()
@@ -117,3 +166,4 @@ async def on_ready():
 
 
 bot.run(os.getenv("TOKEN"))
+```
