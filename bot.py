@@ -10,9 +10,9 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- LEVEL UP CHANNEL ----------------
+# ---------------- LEVEL CHANNEL ----------------
 
-LEVEL_CHANNEL_ID = 1510080367892238336  # #помойка
+LEVEL_CHANNEL_ID = 1510080367892238336
 
 # ---------------- DATA ----------------
 
@@ -122,7 +122,7 @@ async def on_message(message):
 
     save_data(data)
 
-# ---------------- KRESTIKI-NOLIKI (FIXED PROPER WAY) ----------------
+# ---------------- TTT LOGIC ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -146,15 +146,15 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
-# ---------------- FIXED TTT (NO DUPLICATES EVER) ----------------
+# ---------------- FIXED TTT (NO DUPLICATES) ----------------
 
 class TTT(discord.ui.View):
-    def __init__(self, p1, p2, board=None, turn=0):
+    def __init__(self, p1, p2):
         super().__init__(timeout=None)
 
         self.players = [p1, p2]
-        self.board = board or [" "] * 9
-        self.turn = turn
+        self.board = [" "] * 9
+        self.turn = 0
 
         self.build_buttons()
 
@@ -184,38 +184,38 @@ class TTT(discord.ui.View):
 
                 winner = check(self.board)
 
-                # 🏆 WIN
+                # WIN
                 if winner:
                     give_xp(interaction.user.id, 50)
+                    self.build_buttons()
 
-                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                    for b in new_view.children:
+                    for b in self.children:
                         b.disabled = True
 
                     return await interaction.response.edit_message(
                         content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=new_view
+                        view=self
                     )
 
-                # 🤝 DRAW
+                # DRAW
                 if " " not in self.board:
-                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                    for b in new_view.children:
+                    self.build_buttons()
+
+                    for b in self.children:
                         b.disabled = True
 
                     return await interaction.response.edit_message(
                         content="🤝 Ничья",
-                        view=new_view
+                        view=self
                     )
 
-                # 🔁 NEXT TURN
+                # NEXT TURN
                 self.turn = 1 - self.turn
+                self.build_buttons()
 
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-
-                await interaction.response.edit_message(
+                return await interaction.response.edit_message(
                     content=f"Ход: {self.players[self.turn].mention}",
-                    view=new_view
+                    view=self
                 )
 
             btn.callback = callback
@@ -238,11 +238,11 @@ async def fortuna(ctx):
 
     variants = []
 
-    def check(m):
+    def check_msg(m):
         return m.author == ctx.author and m.channel == ctx.channel
 
     while True:
-        msg = await bot.wait_for("message", check=check)
+        msg = await bot.wait_for("message", check=check_msg)
 
         if msg.content.lower() == "готово":
             break
