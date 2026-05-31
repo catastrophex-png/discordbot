@@ -12,10 +12,16 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-# ---------------- DATA ----------------
+bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ---------------- SETTINGS ----------------
+
+LEVEL_CHANNEL_ID = 1510080367892238336
 DATA_FILE = "data.json"
+
 voice_activity = {}
+
+# ---------------- DATA ----------------
 
 def load_data():
     try:
@@ -53,19 +59,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- BOT ----------------
-
-class MyBot(commands.Bot):
-    async def setup_hook(self):
-        self.loop.create_task(voice_xp_loop())
-        await self.tree.sync()
-
-bot = MyBot(command_prefix="!", intents=intents)
-tree = bot.tree
-
-LEVEL_CHANNEL_ID = 1510080367892238336
-
-# ---------------- LEVEL UP IMAGE ----------------
+# ---------------- LEVEL UP ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -89,7 +83,7 @@ async def send_level_up(user, level):
         file=discord.File(path)
     )
 
-# ---------------- TEXT XP ----------------
+# ---------------- XP SYSTEM (TEXT) ----------------
 
 @bot.event
 async def on_message(message):
@@ -105,9 +99,8 @@ async def on_message(message):
     data[uid]["xp"] += random.randint(5, 15)
 
     level = data[uid]["level"]
-    xp = data[uid]["xp"]
 
-    if xp >= xp_needed(level):
+    if data[uid]["xp"] >= xp_needed(level):
         data[uid]["level"] += 1
         data[uid]["xp"] = 0
         await send_level_up(message.author, data[uid]["level"])
@@ -141,24 +134,23 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            # 🔥 1 XP per minute in voice
+            # 1 XP per minute in voice
             data[uid]["xp"] += 1
 
             level = data[uid]["level"]
-            xp = data[uid]["xp"]
 
-            if xp >= xp_needed(level):
+            if data[uid]["xp"] >= xp_needed(level):
                 data[uid]["level"] += 1
                 data[uid]["xp"] = 0
 
         save_data(data)
         await asyncio.sleep(60)
 
-# ---------------- SLASH COMMANDS ----------------
+# ---------------- COMMANDS ----------------
 
-@tree.command(name="rank", description="Показать уровень игрока")
-async def rank(interaction: discord.Interaction, member: discord.Member = None):
-    member = member or interaction.user
+@bot.command()
+async def rank(ctx, member: discord.Member = None):
+    member = member or ctx.author
     uid = str(member.id)
 
     data = load_data()
@@ -169,7 +161,7 @@ async def rank(interaction: discord.Interaction, member: discord.Member = None):
     level = data[uid]["level"]
     xp = data[uid]["xp"]
 
-    await interaction.response.send_message(
+    await ctx.send(
         f"📊 **{member.display_name}**\n\n"
         f"🏆 Level: **{level}**\n"
         f"✨ XP: **{xp} / {xp_needed(level)}**\n"
@@ -177,18 +169,18 @@ async def rank(interaction: discord.Interaction, member: discord.Member = None):
         f"💬 Title: **{get_title(level)}**"
     )
 
-@tree.command(name="ping", description="Проверка бота")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("бот жив 🟢")
+@bot.command()
+async def ping(ctx):
+    await ctx.send("🟢 бот жив")
 
-@tree.command(name="fortuna", description="Мини-игра фортуна")
-async def fortuna(interaction: discord.Interaction):
-    await interaction.response.send_message("Отправляй варианты, потом напиши 'готово'")
+@bot.command()
+async def fortuna(ctx):
+    await ctx.send("🔮 Напиши варианты, потом 'готово'")
 
     variants = []
 
     def check(m):
-        return m.author == interaction.user and m.channel == interaction.channel
+        return m.author == ctx.author and m.channel == ctx.channel
 
     while True:
         msg = await bot.wait_for("message", check=check)
@@ -196,12 +188,13 @@ async def fortuna(interaction: discord.Interaction):
             break
         variants.append(msg.content)
 
-    await interaction.followup.send(f"✨ Победитель: **{random.choice(variants)}**")
+    await ctx.send(f"✨ Победитель: **{random.choice(variants)}**")
 
 # ---------------- READY ----------------
 
 @bot.event
 async def on_ready():
     print("BOT ONLINE:", bot.user)
+    bot.loop.create_task(voice_xp_loop())
 
 bot.run(os.getenv("TOKEN"))
