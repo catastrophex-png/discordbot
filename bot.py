@@ -146,7 +146,7 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
-# ---------------- FIXED TTT (NO DUPLICATES) ----------------
+# ---------------- TTT (FIXED, NO DUPLICATES) ----------------
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
@@ -187,8 +187,8 @@ class TTT(discord.ui.View):
                 # WIN
                 if winner:
                     give_xp(interaction.user.id, 50)
-                    self.build_buttons()
 
+                    self.build_buttons()
                     for b in self.children:
                         b.disabled = True
 
@@ -200,7 +200,6 @@ class TTT(discord.ui.View):
                 # DRAW
                 if " " not in self.board:
                     self.build_buttons()
-
                     for b in self.children:
                         b.disabled = True
 
@@ -230,6 +229,29 @@ async def ttt(ctx, opponent: discord.Member):
     await ctx.send(
         f"🎮 {ctx.author.mention} vs {opponent.mention}\nХод: {ctx.author.mention}",
         view=view
+    )
+
+@bot.command()
+async def rank(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    user_id = str(member.id)
+
+    data = load_data()
+
+    if user_id not in data:
+        data[user_id] = {"xp": 0, "level": 1}
+
+    level = data[user_id]["level"]
+    xp = data[user_id]["xp"]
+
+    needed = xp_needed(level)
+
+    await ctx.send(
+        f"📊 **Статистика {member.display_name}**\n\n"
+        f"🏆 Уровень: **{level}**\n"
+        f"✨ XP: **{xp} / {needed}**\n"
+        f"📛 Ранг: **{get_rank(level)}**\n"
+        f"💬 Титул: **{get_title(level)}**"
     )
 
 @bot.command()
