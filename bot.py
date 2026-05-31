@@ -28,7 +28,7 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-# ---------------- XP ----------------
+# ---------------- XP SYSTEM ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -57,16 +57,15 @@ def get_title(level):
 
 class MyBot(commands.Bot):
     async def setup_hook(self):
-        self.tree.copy_global_to(guild=None)
-        await self.tree.sync()
         self.loop.create_task(voice_xp_loop())
+        await self.tree.sync()
 
 bot = MyBot(command_prefix="!", intents=intents)
 tree = bot.tree
 
 LEVEL_CHANNEL_ID = 1510080367892238336
 
-# ---------------- LEVEL UP ----------------
+# ---------------- LEVEL UP IMAGE ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -97,27 +96,23 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    try:
-        data = load_data()
-        uid = str(message.author.id)
+    data = load_data()
+    uid = str(message.author.id)
 
-        if uid not in data:
-            data[uid] = {"xp": 0, "level": 1}
+    if uid not in data:
+        data[uid] = {"xp": 0, "level": 1}
 
-        data[uid]["xp"] += random.randint(5, 15)
+    data[uid]["xp"] += random.randint(5, 15)
 
-        level = data[uid]["level"]
-        xp = data[uid]["xp"]
+    level = data[uid]["level"]
+    xp = data[uid]["xp"]
 
-        if xp >= xp_needed(level):
-            data[uid]["level"] += 1
-            data[uid]["xp"] = 0
-            await send_level_up(message.author, data[uid]["level"])
+    if xp >= xp_needed(level):
+        data[uid]["level"] += 1
+        data[uid]["xp"] = 0
+        await send_level_up(message.author, data[uid]["level"])
 
-        save_data(data)
-
-    except Exception as e:
-        print("XP ERROR:", e)
+    save_data(data)
 
     await bot.process_commands(message)
 
@@ -146,6 +141,7 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
+            # 🔥 1 XP per minute in voice
             data[uid]["xp"] += 1
 
             level = data[uid]["level"]
@@ -187,7 +183,7 @@ async def ping(interaction: discord.Interaction):
 
 @tree.command(name="fortuna", description="Мини-игра фортуна")
 async def fortuna(interaction: discord.Interaction):
-    await interaction.response.send_message("Отправляй варианты в чат, потом напиши 'готово'")
+    await interaction.response.send_message("Отправляй варианты, потом напиши 'готово'")
 
     variants = []
 
