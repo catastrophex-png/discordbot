@@ -122,7 +122,7 @@ async def on_message(message):
 
     save_data(data)
 
-# ---------------- KRESTIKI-NOLIKI (FIXED NO DUPLICATES) ----------------
+# ---------------- KRESTIKI-NOLIKI (FIXED PROPER WAY) ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -146,17 +146,19 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
+# ---------------- FIXED TTT (NO DUPLICATES EVER) ----------------
+
 class TTT(discord.ui.View):
-    def __init__(self, p1, p2):
+    def __init__(self, p1, p2, board=None, turn=0):
         super().__init__(timeout=None)
 
         self.players = [p1, p2]
-        self.board = [" "] * 9
-        self.turn = 0
+        self.board = board or [" "] * 9
+        self.turn = turn
 
-        self.build()
+        self.build_buttons()
 
-    def build(self):
+    def build_buttons(self):
         self.clear_items()
 
         for i in range(9):
@@ -171,50 +173,49 @@ class TTT(discord.ui.View):
             )
 
             async def callback(interaction, i=i):
+
                 if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message(
-                        "Не твой ход",
-                        ephemeral=True
-                    )
+                    return await interaction.response.send_message("Не твой ход", ephemeral=True)
 
                 if self.board[i] != " ":
-                    return await interaction.response.send_message(
-                        "Занято",
-                        ephemeral=True
-                    )
+                    return await interaction.response.send_message("Занято", ephemeral=True)
 
                 self.board[i] = "❌" if self.turn == 0 else "⭕"
 
                 winner = check(self.board)
 
+                # 🏆 WIN
                 if winner:
                     give_xp(interaction.user.id, 50)
 
-                    self.build()
-                    for b in self.children:
+                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+                    for b in new_view.children:
                         b.disabled = True
 
                     return await interaction.response.edit_message(
                         content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=self
+                        view=new_view
                     )
 
+                # 🤝 DRAW
                 if " " not in self.board:
-                    self.build()
-                    for b in self.children:
+                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+                    for b in new_view.children:
                         b.disabled = True
 
                     return await interaction.response.edit_message(
                         content="🤝 Ничья",
-                        view=self
+                        view=new_view
                     )
 
+                # 🔁 NEXT TURN
                 self.turn = 1 - self.turn
-                self.build()
+
+                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
 
                 await interaction.response.edit_message(
                     content=f"Ход: {self.players[self.turn].mention}",
-                    view=self
+                    view=new_view
                 )
 
             btn.callback = callback
@@ -224,12 +225,11 @@ class TTT(discord.ui.View):
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-    game = TTT(ctx.author, opponent)
+    view = TTT(ctx.author, opponent)
 
     await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}\n"
-        f"Ход: {ctx.author.mention}",
-        view=game
+        f"🎮 {ctx.author.mention} vs {opponent.mention}\nХод: {ctx.author.mention}",
+        view=view
     )
 
 @bot.command()
@@ -255,8 +255,6 @@ async def fortuna(ctx):
 @bot.command()
 async def ping(ctx):
     await ctx.send("бот жив 🟢")
-
-# ---------------- READY ----------------
 
 @bot.event
 async def on_ready():
