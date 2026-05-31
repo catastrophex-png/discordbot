@@ -146,6 +146,8 @@ def give_xp(user_id, amount):
     data[uid]["xp"] += amount
     save_data(data)
 
+# ---------------- FIXED TTT (БЕЗ ДУБЛЕЙ) ----------------
+
 class TTT(discord.ui.View):
     def __init__(self, p1, p2, board=None, turn=0):
         super().__init__(timeout=None)
@@ -154,63 +156,71 @@ class TTT(discord.ui.View):
         self.board = board or [" "] * 9
         self.turn = turn
 
+        self.build()
+
+    def build(self):
+        self.clear_items()
+
         for i in range(9):
-            self.add_item(self.make_button(i))
+            mark = self.board[i]
+            label = mark if mark != " " else "⬜"
 
-    def make_button(self, i):
-        mark = self.board[i]
-        label = mark if mark != " " else "⬜"
-
-        btn = discord.ui.Button(
-            label=label,
-            style=discord.ButtonStyle.secondary,
-            row=i // 3,
-            disabled=(mark != " ")
-        )
-
-        async def callback(interaction):
-            if interaction.user != self.players[self.turn]:
-                return await interaction.response.send_message("Эй псина, не твой ход", ephemeral=True)
-
-            if self.board[i] != " ":
-                return await interaction.response.send_message("Занято нахуй", ephemeral=True)
-
-            self.board[i] = "❌" if self.turn == 0 else "⭕"
-
-            winner = check(self.board)
-
-            if winner:
-                give_xp(interaction.user.id, 50)
-
-                view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                for b in view.children:
-                    b.disabled = True
-
-                return await interaction.response.edit_message(
-                    content=f"🏆 Победитель: {interaction.user.mention}",
-                    view=view
-                )
-
-            if " " not in self.board:
-                view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                for b in view.children:
-                    b.disabled = True
-
-                return await interaction.response.edit_message(
-                    content="🤝 Ничья",
-                    view=view
-                )
-
-            next_turn = 1 - self.turn
-            view = TTT(self.players[0], self.players[1], self.board, next_turn)
-
-            await interaction.response.edit_message(
-                content=f"Ход: {view.players[view.turn].mention}",
-                view=view
+            btn = discord.ui.Button(
+                label=label,
+                style=discord.ButtonStyle.secondary,
+                row=i // 3,
+                disabled=(mark != " ")
             )
 
-        btn.callback = callback
-        return btn
+            async def callback(interaction, i=i):
+                if interaction.user != self.players[self.turn]:
+                    return await interaction.response.send_message(
+                        "Эй псина, не твой ход",
+                        ephemeral=True
+                    )
+
+                if self.board[i] != " ":
+                    return await interaction.response.send_message(
+                        "Занято нахуй",
+                        ephemeral=True
+                    )
+
+                self.board[i] = "❌" if self.turn == 0 else "⭕"
+
+                winner = check(self.board)
+
+                if winner:
+                    give_xp(interaction.user.id, 50)
+
+                    self.build()
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content=f"🏆 Победитель: {interaction.user.mention}",
+                        view=self
+                    )
+
+                if " " not in self.board:
+                    self.build()
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content="🤝 Ничья",
+                        view=self
+                    )
+
+                self.turn = 1 - self.turn
+                self.build()
+
+                await interaction.response.edit_message(
+                    content=f"Ход: {self.players[self.turn].mention}",
+                    view=self
+                )
+
+            btn.callback = callback
+            self.add_item(btn)
 
 # ---------------- COMMANDS ----------------
 
