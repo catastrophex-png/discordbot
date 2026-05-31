@@ -3,10 +3,12 @@ from discord.ext import commands
 import os
 import random
 import json
+import asyncio
 from PIL import Image, ImageDraw
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -14,6 +16,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 LEVEL_CHANNEL_ID = 1510080367892238336
 DATA_FILE = "data.json"
+
+# ---------------- VOICE TRACK ----------------
+
+voice_activity = {}
 
 # ---------------- DATA ----------------
 
@@ -28,10 +34,10 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-# ---------------- XP SYSTEM ----------------
+# ---------------- XP SYSTEM (UPDATED) ----------------
 
 def xp_needed(level):
-    return 100 + level * 50
+    return 75 + (level - 1) * 100
 
 def get_rank(level):
     if level < 5: return "🧱 Cardboard"
@@ -53,7 +59,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL UP ----------------
+# ---------------- LEVEL UP IMAGE ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -77,7 +83,7 @@ async def send_level_up(user, level):
         file=discord.File(path)
     )
 
-# ---------------- XP LOGIC (SAFE) ----------------
+# ---------------- TEXT XP ----------------
 
 @bot.event
 async def on_message(message):
@@ -108,7 +114,46 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ---------------- TIC TAC TOE ----------------
+# ---------------- VOICE XP ----------------
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if member.bot:
+        return
+
+    uid = str(member.id)
+
+    if after.channel and not before.channel:
+        voice_activity[uid] = True
+
+    elif before.channel and not after.channel:
+        voice_activity.pop(uid, None)
+
+async def voice_xp_loop():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+        data = load_data()
+
+        for uid in list(voice_activity.keys()):
+            if uid not in data:
+                data[uid] = {"xp": 0, "level": 1}
+
+            data[uid]["xp"] += 10
+
+            level = data[uid]["level"]
+            xp = data[uid]["xp"]
+
+            if xp >= xp_needed(level):
+                data[uid]["level"] += 1
+                data[uid]["xp"] = 0
+
+        save_data(data)
+        await asyncio.sleep(60)
+
+bot.loop.create_task(voice_xp_loop())
+
+# ---------------- TTT ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -117,7 +162,7 @@ WIN = [
 ]
 
 def check(board):
-    for a, b, c in WIN:
+    for a,b,c in WIN:
         if board[a] == board[b] == board[c] and board[a] != " ":
             return board[a]
     return None
@@ -131,8 +176,6 @@ def give_xp(user_id, amount):
 
     data[uid]["xp"] += amount
     save_data(data)
-
-# ---------------- TTT VIEW (FIXED NO DUPLICATES) ----------------
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
@@ -149,10 +192,9 @@ class TTT(discord.ui.View):
 
         for i in range(9):
             mark = self.board[i]
-            label = mark if mark != " " else "⬜"
 
             btn = discord.ui.Button(
-                label=label,
+                label=mark if mark != " " else "⬜",
                 style=discord.ButtonStyle.secondary,
                 row=i // 3,
                 disabled=(mark != " ")
@@ -172,8 +214,8 @@ class TTT(discord.ui.View):
 
                 if winner:
                     give_xp(interaction.user.id, 50)
-                    self.build()
 
+                    self.build()
                     for b in self.children:
                         b.disabled = True
 
@@ -184,7 +226,6 @@ class TTT(discord.ui.View):
 
                 if " " not in self.board:
                     self.build()
-
                     for b in self.children:
                         b.disabled = True
 
