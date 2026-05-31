@@ -10,10 +10,22 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-# ---------------- DATA ----------------
+# ---------------- BOT ----------------
 
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        self.loop.create_task(voice_xp_loop())
+
+bot = MyBot(command_prefix="!", intents=intents)
+
+# ---------------- SETTINGS ----------------
+
+LEVEL_CHANNEL_ID = 1510080367892238336
 DATA_FILE = "data.json"
+
 voice_activity = {}
+
+# ---------------- DATA ----------------
 
 def load_data():
     try:
@@ -50,18 +62,6 @@ def get_title(level):
     if level < 35: return "Ебланище"
     if level < 50: return "Животное"
     return "Легенда сервера"
-
-# ---------------- BOT CLASS (IMPORTANT FIX) ----------------
-
-class MyBot(commands.Bot):
-    async def setup_hook(self):
-        self.loop.create_task(voice_xp_loop())
-
-# ---------------- BOT INIT ----------------
-
-bot = MyBot(command_prefix="!", intents=intents)
-
-LEVEL_CHANNEL_ID = 1510080367892238336
 
 # ---------------- LEVEL UP ----------------
 
@@ -143,7 +143,8 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            data[uid]["xp"] += 10
+            # 🔥 1 XP per minute in voice
+            data[uid]["xp"] += 1
 
             level = data[uid]["level"]
             xp = data[uid]["xp"]
