@@ -1,4 +1,3 @@
-```python
 import discord
 from discord.ext import commands
 import os
@@ -8,6 +7,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# --- КРЕСТИКИ-НОЛИКИ ---
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -46,76 +47,65 @@ class TTT(discord.ui.View):
 
         async def callback(interaction: discord.Interaction):
             if interaction.user != self.players[self.turn]:
-                return await interaction.response.send_message(
-                    "Эй псина, не твой ход",
-                    ephemeral=True
-                )
+                return await interaction.response.send_message("Эй псина, не твой ход", ephemeral=True)
 
             if self.board[i] != " ":
-                return await interaction.response.send_message(
-                    "Занято нахуй",
-                    ephemeral=True
-                )
+                return await interaction.response.send_message("Занято нахуй", ephemeral=True)
 
             self.board[i] = "❌" if self.turn == 0 else "⭕"
 
             winner = check(self.board)
 
             if winner:
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                for child in new_view.children:
-                    child.disabled = True
+                view = TTT(self.players[0], self.players[1], self.board, self.turn)
+                for b in view.children:
+                    b.disabled = True
 
                 return await interaction.response.edit_message(
                     content=f"🏆 Победитель: {interaction.user.mention}",
-                    view=new_view
+                    view=view
                 )
 
             if " " not in self.board:
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                for child in new_view.children:
-                    child.disabled = True
+                view = TTT(self.players[0], self.players[1], self.board, self.turn)
+                for b in view.children:
+                    b.disabled = True
 
                 return await interaction.response.edit_message(
                     content="🤝 Ничья",
-                    view=new_view
+                    view=view
                 )
 
             next_turn = 1 - self.turn
-            new_view = TTT(self.players[0], self.players[1], self.board, next_turn)
+            view = TTT(self.players[0], self.players[1], self.board, next_turn)
 
             await interaction.response.edit_message(
-                content=f"Ход: {new_view.players[new_view.turn].mention}",
-                view=new_view
+                content=f"Ход: {view.players[view.turn].mention}",
+                view=view
             )
 
         btn.callback = callback
         return btn
 
 
+# --- ФОРТУНА ---
+
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     await ctx.send(
-        "🔮 **Режим Фортуны запущен!**\n"
-        "Отправляйте варианты по одному сообщению.\n"
-        "Когда закончите, напишите: **готово**"
+        "🔮 **Фортуна запущена!**\n"
+        "Отправляй варианты по одному сообщению.\n"
+        "Когда закончишь — напиши **готово**"
     )
 
     variants = []
 
-    def msg_check(message):
-        return (
-            message.author == ctx.author
-            and message.channel == ctx.channel
-        )
+    def check_msg(m):
+        return m.author == ctx.author and m.channel == ctx.channel
 
     while True:
         try:
-            msg = await bot.wait_for(
-                "message",
-                check=msg_check,
-                timeout=300
-            )
+            msg = await bot.wait_for("message", check=check_msg, timeout=300)
 
             if msg.content.lower().strip() == "готово":
                 break
@@ -123,26 +113,25 @@ async def fortuna(ctx):
             variants.append(msg.content.strip())
 
         except:
-            await ctx.send("⌛ Время ожидания истекло.")
+            await ctx.send("⌛ Время вышло.")
             return
 
     if not variants:
-        await ctx.send("❌ Вы не добавили ни одного варианта.")
+        await ctx.send("❌ Ты не добавила варианты.")
         return
 
-    text = "\n".join(f"• {v}" for v in variants)
-
     await ctx.send(
-        f"🔮 **Варианты собраны:**\n\n{text}\n\n🎲 Крутим колесо..."
+        "🔮 Варианты:\n\n" +
+        "\n".join(f"• {v}" for v in variants) +
+        "\n\n🎲 Кручу..."
     )
 
     winner = random.choice(variants)
 
-    await ctx.send(
-        f"🥁🥁🥁\n"
-        f"✨ **Победитель: {winner}** ✨"
-    )
+    await ctx.send(f"✨ Победитель: **{winner}** ✨")
 
+
+# --- TTT команда ---
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
@@ -155,6 +144,8 @@ async def ttt(ctx, opponent: discord.Member):
     )
 
 
+# --- ping ---
+
 @bot.command()
 async def ping(ctx):
     await ctx.send("бот жив 🟢")
@@ -166,4 +157,3 @@ async def on_ready():
 
 
 bot.run(os.getenv("TOKEN"))
-```
