@@ -10,7 +10,11 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- XP SYSTEM ----------------
+# ---------------- LEVEL UP CHANNEL ----------------
+
+LEVEL_CHANNEL_ID = 1510080367892238336  # #помойка
+
+# ---------------- DATA ----------------
 
 DATA_FILE = "data.json"
 
@@ -24,6 +28,8 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
+
+# ---------------- XP SYSTEM ----------------
 
 def xp_needed(level):
     return 100 + level * 50
@@ -62,11 +68,17 @@ def get_title(level):
         return "Животное"
     return "Легенда сервера"
 
+# ---------------- LEVEL UP IMAGE ----------------
+
 async def send_level_up(user, level):
+    channel = bot.get_channel(LEVEL_CHANNEL_ID)
+    if not channel:
+        return
+
     rank = get_rank(level)
     title = get_title(level)
 
-    img = Image.new("RGB", (600, 250), (20, 20, 20))
+    img = Image.new("RGB", (600, 250), (25, 25, 25))
     draw = ImageDraw.Draw(img)
 
     draw.text((20, 30), "LEVEL UP!", fill="white")
@@ -78,7 +90,10 @@ async def send_level_up(user, level):
     path = f"levelup_{user.id}.png"
     img.save(path)
 
-    await user.send(file=discord.File(path))
+    await channel.send(
+        content=f"🎉 {user.mention} повысил уровень!",
+        file=discord.File(path)
+    )
 
 # ---------------- XP ON MESSAGE ----------------
 
@@ -103,7 +118,6 @@ async def on_message(message):
     if xp >= xp_needed(level):
         data[user_id]["level"] += 1
         data[user_id]["xp"] = 0
-
         await send_level_up(message.author, data[user_id]["level"])
 
     save_data(data)
@@ -122,6 +136,15 @@ def check(board):
             return board[a]
     return None
 
+def give_xp(user_id, amount):
+    data = load_data()
+    uid = str(user_id)
+
+    if uid not in data:
+        data[uid] = {"xp": 0, "level": 1}
+
+    data[uid]["xp"] += amount
+    save_data(data)
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2, board=None, turn=0):
@@ -145,9 +168,9 @@ class TTT(discord.ui.View):
             disabled=(mark != " ")
         )
 
-        async def callback(interaction: discord.Interaction):
+        async def callback(interaction):
             if interaction.user != self.players[self.turn]:
-                return await interaction.response.send_message("Эй псина,не твой ход", ephemeral=True)
+                return await interaction.response.send_message("Эй псина, не твой ход", ephemeral=True)
 
             if self.board[i] != " ":
                 return await interaction.response.send_message("Занято нахуй", ephemeral=True)
@@ -189,19 +212,6 @@ class TTT(discord.ui.View):
         btn.callback = callback
         return btn
 
-# ---------------- XP FROM DUELS ----------------
-
-def give_xp(user_id, amount):
-    data = load_data()
-
-    uid = str(user_id)
-
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 1}
-
-    data[uid]["xp"] += amount
-    save_data(data)
-
 # ---------------- COMMANDS ----------------
 
 @bot.command()
@@ -213,7 +223,6 @@ async def ttt(ctx, opponent: discord.Member):
         f"Ход: {ctx.author.mention}",
         view=view
     )
-
 
 @bot.command()
 async def fortuna(ctx):
@@ -233,9 +242,7 @@ async def fortuna(ctx):
         variants.append(msg.content)
 
     winner = random.choice(variants)
-
     await ctx.send(f"✨ Победитель: **{winner}** ✨")
-
 
 @bot.command()
 async def ping(ctx):
