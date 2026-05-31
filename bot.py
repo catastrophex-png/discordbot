@@ -6,26 +6,16 @@ import json
 import asyncio
 from PIL import Image, ImageDraw
 
+# ---------------- INTENTS ----------------
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-# ---------------- BOT ----------------
-
-class MyBot(commands.Bot):
-    async def setup_hook(self):
-        self.loop.create_task(voice_xp_loop())
-
-bot = MyBot(command_prefix="!", intents=intents)
-
-# ---------------- SETTINGS ----------------
-
-LEVEL_CHANNEL_ID = 1510080367892238336
-DATA_FILE = "data.json"
-
-voice_activity = {}
-
 # ---------------- DATA ----------------
+
+DATA_FILE = "data.json"
+voice_activity = {}
 
 def load_data():
     try:
@@ -38,7 +28,7 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-# ---------------- XP SYSTEM ----------------
+# ---------------- XP ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -62,6 +52,19 @@ def get_title(level):
     if level < 35: return "Ебланище"
     if level < 50: return "Животное"
     return "Легенда сервера"
+
+# ---------------- BOT ----------------
+
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        self.tree.copy_global_to(guild=None)
+        await self.tree.sync()
+        self.loop.create_task(voice_xp_loop())
+
+bot = MyBot(command_prefix="!", intents=intents)
+tree = bot.tree
+
+LEVEL_CHANNEL_ID = 1510080367892238336
 
 # ---------------- LEVEL UP ----------------
 
@@ -143,7 +146,6 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            # 🔥 1 XP per minute in voice
             data[uid]["xp"] += 1
 
             level = data[uid]["level"]
@@ -156,113 +158,11 @@ async def voice_xp_loop():
         save_data(data)
         await asyncio.sleep(60)
 
-# ---------------- TTT ----------------
+# ---------------- SLASH COMMANDS ----------------
 
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a,b,c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-def give_xp(user_id, amount):
-    data = load_data()
-    uid = str(user_id)
-
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 1}
-
-    data[uid]["xp"] += amount
-    save_data(data)
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2):
-        super().__init__(timeout=None)
-
-        self.players = [p1, p2]
-        self.board = [" "] * 9
-        self.turn = 0
-
-        self.build()
-
-    def build(self):
-        self.clear_items()
-
-        for i in range(9):
-            mark = self.board[i]
-
-            btn = discord.ui.Button(
-                label=mark if mark != " " else "⬜",
-                style=discord.ButtonStyle.secondary,
-                row=i // 3,
-                disabled=(mark != " ")
-            )
-
-            async def callback(interaction, i=i):
-
-                if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("Не твой ход", ephemeral=True)
-
-                if self.board[i] != " ":
-                    return await interaction.response.send_message("Занято", ephemeral=True)
-
-                self.board[i] = "❌" if self.turn == 0 else "⭕"
-
-                winner = check(self.board)
-
-                if winner:
-                    give_xp(interaction.user.id, 50)
-                    self.build()
-
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=self
-                    )
-
-                if " " not in self.board:
-                    self.build()
-
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content="🤝 Ничья",
-                        view=self
-                    )
-
-                self.turn = 1 - self.turn
-                self.build()
-
-                return await interaction.response.edit_message(
-                    content=f"Ход: {self.players[self.turn].mention}",
-                    view=self
-                )
-
-            btn.callback = callback
-            self.add_item(btn)
-
-# ---------------- COMMANDS ----------------
-
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
-
-    await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}\nХод: {ctx.author.mention}",
-        view=view
-    )
-
-@bot.command()
-async def rank(ctx, member: discord.Member = None):
-    member = member or ctx.author
+@tree.command(name="rank", description="Показать уровень игрока")
+async def rank(interaction: discord.Interaction, member: discord.Member = None):
+    member = member or interaction.user
     uid = str(member.id)
 
     data = load_data()
@@ -273,7 +173,7 @@ async def rank(ctx, member: discord.Member = None):
     level = data[uid]["level"]
     xp = data[uid]["xp"]
 
-    await ctx.send(
+    await interaction.response.send_message(
         f"📊 **{member.display_name}**\n\n"
         f"🏆 Level: **{level}**\n"
         f"✨ XP: **{xp} / {xp_needed(level)}**\n"
@@ -281,18 +181,18 @@ async def rank(ctx, member: discord.Member = None):
         f"💬 Title: **{get_title(level)}**"
     )
 
-@bot.command()
-async def ping(ctx):
-    await ctx.send("бот жив 🟢")
+@tree.command(name="ping", description="Проверка бота")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("бот жив 🟢")
 
-@bot.command()
-async def fortuna(ctx):
-    await ctx.send("🔮 Напиши варианты, потом 'готово'")
+@tree.command(name="fortuna", description="Мини-игра фортуна")
+async def fortuna(interaction: discord.Interaction):
+    await interaction.response.send_message("Отправляй варианты в чат, потом напиши 'готово'")
 
     variants = []
 
     def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
+        return m.author == interaction.user and m.channel == interaction.channel
 
     while True:
         msg = await bot.wait_for("message", check=check)
@@ -300,7 +200,7 @@ async def fortuna(ctx):
             break
         variants.append(msg.content)
 
-    await ctx.send(f"✨ Победитель: **{random.choice(variants)}**")
+    await interaction.followup.send(f"✨ Победитель: **{random.choice(variants)}**")
 
 # ---------------- READY ----------------
 
