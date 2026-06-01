@@ -69,37 +69,40 @@ async def send_level_up(user, level):
     if not channel:
         return
 
-    img = Image.new("RGB", (900, 300), (20, 20, 35))
+    img = Image.new("RGB", (900, 300), (18, 18, 28))
     draw = ImageDraw.Draw(img)
 
     for y in range(300):
-        draw.line([(0, y), (900, y)], fill=(20, 20 + y//10, 60 + y//6))
+        color = (18 + y//30, 18 + y//40, 35 + y//20)
+        draw.line([(0, y), (900, y)], fill=color)
 
     try:
-        font_big = ImageFont.truetype("arial.ttf", 42)
-        font_mid = ImageFont.truetype("arial.ttf", 30)
+        font_big = ImageFont.truetype("arial.ttf", 44)
+        font_name = ImageFont.truetype("arial.ttf", 38)
+        font_mid = ImageFont.truetype("arial.ttf", 28)
         font_small = ImageFont.truetype("arial.ttf", 24)
     except:
         font_big = ImageFont.load_default()
+        font_name = ImageFont.load_default()
         font_mid = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     response = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(response.content)).convert("RGB")
-    avatar = avatar.resize((180, 180))
+    avatar = avatar.resize((200, 200))
 
-    mask = Image.new("L", (180, 180), 0)
+    mask = Image.new("L", (200, 200), 0)
     m = ImageDraw.Draw(mask)
-    m.ellipse((0, 0, 180, 180), fill=255)
+    m.ellipse((0, 0, 200, 200), fill=255)
 
-    img.paste(avatar, (40, 60), mask)
+    img.paste(avatar, (40, 50), mask)
 
-    draw.text((260, 60), "LEVEL UP!", fill="white", font=font_big)
-    draw.text((260, 120), user.display_name, fill="white", font=font_mid)
-    draw.text((260, 170), f"Level {level}", fill="cyan", font=font_mid)
-    draw.text((260, 210), get_rank(level), fill="gold", font=font_small)
-    draw.text((260, 245), get_title(level), fill="orange", font=font_small)
+    draw.text((270, 40), "LEVEL UP!", fill=(255, 255, 255), font=font_big)
+    draw.text((270, 100), user.display_name, fill=(255, 255, 255), font=font_name)
+    draw.text((270, 155), f"Level: {level}", fill=(120, 200, 255), font=font_mid)
+    draw.text((270, 195), f"Rank: {get_rank(level)}", fill=(255, 215, 120), font=font_small)
+    draw.text((270, 230), f"Title: {get_title(level)}", fill=(255, 170, 120), font=font_small)
 
     path = f"levelup_{user.id}.png"
     img.save(path)
@@ -126,8 +129,9 @@ async def on_message(message):
 
     data[uid]["xp"] += random.randint(5, 15)
 
+    # FIX: без багов и двойных триггеров
     if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
-        data[uid]["xp"] = 0
+        data[uid]["xp"] -= xp_needed(data[uid]["level"])
         data[uid]["level"] += 1
         await send_level_up(message.author, data[uid]["level"])
 
@@ -135,8 +139,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
-
-voice_activity = {}
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -163,7 +165,7 @@ async def voice_xp_loop():
             data[uid]["xp"] += 1
 
             if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
-                data[uid]["xp"] = 0
+                data[uid]["xp"] -= xp_needed(data[uid]["level"])
                 data[uid]["level"] += 1
 
         save_data(data)
@@ -263,17 +265,7 @@ class TTT(discord.ui.View):
             btn.callback = callback
             self.add_item(btn)
 
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
-
-    await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}\n"
-        f"Ход: {ctx.author.mention}",
-        view=view
-    )
-
-# ---------------- BASIC COMMANDS ----------------
+# ---------------- COMMANDS ----------------
 
 @bot.command()
 async def ping(ctx):
@@ -289,12 +281,25 @@ async def rank(ctx, member: discord.Member = None):
         data[uid] = {"xp": 0, "level": 1}
 
     level = data[uid]["level"]
+    xp = data[uid]["xp"]
+    need = xp_needed(level)
 
     await ctx.send(
         f"📊 {member.display_name}\n"
         f"Level: {level}\n"
+        f"XP: {xp}/{need}\n"
         f"Rank: {get_rank(level)}\n"
         f"Title: {get_title(level)}"
+    )
+
+@bot.command()
+async def ttt(ctx, opponent: discord.Member):
+    view = TTT(ctx.author, opponent)
+
+    await ctx.send(
+        f"🎮 {ctx.author.mention} vs {opponent.mention}\n"
+        f"Ход: {ctx.author.mention}",
+        view=view
     )
 
 # ---------------- START ----------------
