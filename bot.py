@@ -4,13 +4,16 @@ import os
 import random
 import json
 import asyncio
-from PIL import Image, ImageDraw
+import requests
+import io
+from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- INTENTS ----------------
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -59,21 +62,56 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL UP ----------------
+# ---------------- LEVEL UP CARD ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
     if not channel:
         return
 
-    img = Image.new("RGB", (600, 250), (25, 25, 25))
+    width, height = 900, 300
+    img = Image.new("RGB", (width, height), (15, 15, 25))
     draw = ImageDraw.Draw(img)
 
-    draw.text((20, 30), "LEVEL UP!", fill="white")
-    draw.text((20, 80), user.name, fill="white")
-    draw.text((20, 120), f"Level: {level}", fill="white")
-    draw.text((20, 160), get_rank(level), fill="gold")
-    draw.text((20, 200), get_title(level), fill="orange")
+    # gradient background
+    for y in range(height):
+        r = int(20 + y * 0.05)
+        g = int(25 + y * 0.08)
+        b = int(50 + y * 0.15)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+    # fonts
+    try:
+        font_big = ImageFont.truetype("arial.ttf", 42)
+        font_mid = ImageFont.truetype("arial.ttf", 30)
+        font_small = ImageFont.truetype("arial.ttf", 24)
+    except:
+        font_big = ImageFont.load_default()
+        font_mid = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+
+    # avatar
+    avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
+    response = requests.get(avatar_url)
+    avatar = Image.open(io.BytesIO(response.content)).convert("RGB")
+    avatar = avatar.resize((180, 180))
+
+    mask = Image.new("L", (180, 180), 0)
+    mdraw = ImageDraw.Draw(mask)
+    mdraw.ellipse((0, 0, 180, 180), fill=255)
+
+    # shadow
+    draw.ellipse((40, 60, 230, 250), fill=(0, 0, 0, 120))
+
+    img.paste(avatar, (50, 70), mask)
+
+    # text
+    draw.text((260, 60), "LEVEL UP!", fill=(255, 255, 255), font=font_big)
+    draw.text((260, 120), user.display_name, fill=(220, 220, 220), font=font_mid)
+
+    draw.text((260, 170), f"Level {level}", fill=(0, 200, 255), font=font_mid)
+    draw.text((260, 210), get_rank(level), fill=(255, 215, 0), font=font_small)
+    draw.text((260, 245), get_title(level), fill=(255, 140, 0), font=font_small)
 
     path = f"levelup_{user.id}.png"
     img.save(path)
@@ -83,7 +121,9 @@ async def send_level_up(user, level):
         file=discord.File(path)
     )
 
-# ---------------- XP SYSTEM (TEXT) ----------------
+    os.remove(path)
+
+# ---------------- TEXT XP ----------------
 
 @bot.event
 async def on_message(message):
@@ -103,10 +143,10 @@ async def on_message(message):
     if data[uid]["xp"] >= xp_needed(level):
         data[uid]["level"] += 1
         data[uid]["xp"] = 0
+
         await send_level_up(message.author, data[uid]["level"])
 
     save_data(data)
-
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -134,8 +174,7 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            # 1 XP per minute in voice
-            data[uid]["xp"] += 1
+            data[uid]["xp"] += 1  # per minute
 
             level = data[uid]["level"]
 
@@ -195,6 +234,8 @@ async def fortuna(ctx):
 @bot.event
 async def on_ready():
     print("BOT ONLINE:", bot.user)
-    bot.loop.create_task(voice_xp_loop())
+    asyncio.create_task(voice_xp_loop())
+
+# ---------------- RUN ----------------
 
 bot.run(os.getenv("TOKEN"))
