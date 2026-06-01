@@ -22,6 +22,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 LEVEL_CHANNEL_ID = 1510080367892238336
 DATA_FILE = "data.json"
 
+# voice tracking (time-based)
 voice_activity = {}
 
 # ---------------- DATA ----------------
@@ -114,7 +115,7 @@ async def send_level_up(user, level):
 
     os.remove(path)
 
-# ---------------- XP ON MESSAGE ----------------
+# ---------------- MESSAGE XP ----------------
 
 @bot.event
 async def on_message(message):
@@ -129,8 +130,8 @@ async def on_message(message):
 
     data[uid]["xp"] += random.randint(5, 15)
 
-    # FIX: без багов и двойных триггеров
-    if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
+    # stable level system
+    while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
         data[uid]["xp"] -= xp_needed(data[uid]["level"])
         data[uid]["level"] += 1
         await send_level_up(message.author, data[uid]["level"])
@@ -138,7 +139,7 @@ async def on_message(message):
     save_data(data)
     await bot.process_commands(message)
 
-# ---------------- VOICE XP ----------------
+# ---------------- VOICE XP (FIXED) ----------------
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -147,123 +148,32 @@ async def on_voice_state_update(member, before, after):
 
     uid = str(member.id)
 
+    # join voice → store time
     if after.channel and not before.channel:
-        voice_activity[uid] = True
+        voice_activity[uid] = asyncio.get_event_loop().time()
+
+    # leave voice → calculate XP
     elif before.channel and not after.channel:
-        voice_activity.pop(uid, None)
+        start = voice_activity.pop(uid, None)
 
-async def voice_xp_loop():
-    await bot.wait_until_ready()
+        if start:
+            duration = asyncio.get_event_loop().time() - start
 
-    while not bot.is_closed():
-        data = load_data()
+            data = load_data()
 
-        for uid in list(voice_activity.keys()):
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            data[uid]["xp"] += 1
+            gained = int(duration // 10)  # 1 XP per 10 sec
 
-            if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
+            data[uid]["xp"] += gained
+
+            # level check
+            while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
                 data[uid]["xp"] -= xp_needed(data[uid]["level"])
                 data[uid]["level"] += 1
 
-        save_data(data)
-        await asyncio.sleep(60)
-
-# ---------------- TIC TAC TOE ----------------
-
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a, b, c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-def give_xp(user_id, amount):
-    data = load_data()
-    uid = str(user_id)
-
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 1}
-
-    data[uid]["xp"] += amount
-    save_data(data)
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2, board=None, turn=0):
-        super().__init__(timeout=None)
-
-        self.players = [p1, p2]
-        self.board = board or [" "] * 9
-        self.turn = turn
-
-        self.build_buttons()
-
-    def build_buttons(self):
-        self.clear_items()
-
-        for i in range(9):
-            mark = self.board[i]
-            label = mark if mark != " " else "⬜"
-
-            btn = discord.ui.Button(
-                label=label,
-                style=discord.ButtonStyle.secondary,
-                row=i // 3,
-                disabled=(mark != " ")
-            )
-
-            async def callback(interaction, i=i):
-
-                if interaction.user.id != self.players[self.turn].id:
-                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
-
-                if self.board[i] != " ":
-                    return await interaction.response.send_message("⛔ Занято", ephemeral=True)
-
-                self.board[i] = "❌" if self.turn == 0 else "⭕"
-
-                winner = check(self.board)
-
-                if winner:
-                    give_xp(interaction.user.id, 50)
-
-                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                    for b in new_view.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=new_view
-                    )
-
-                if " " not in self.board:
-                    new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-                    for b in new_view.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content="🤝 Ничья",
-                        view=new_view
-                    )
-
-                self.turn = 1 - self.turn
-
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-
-                await interaction.response.edit_message(
-                    content=f"🎮 Ход: {self.players[self.turn].mention}",
-                    view=new_view
-                )
-
-            btn.callback = callback
-            self.add_item(btn)
+            save_data(data)
 
 # ---------------- COMMANDS ----------------
 
@@ -292,21 +202,10 @@ async def rank(ctx, member: discord.Member = None):
         f"Title: {get_title(level)}"
     )
 
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
-
-    await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}\n"
-        f"Ход: {ctx.author.mention}",
-        view=view
-    )
-
 # ---------------- START ----------------
 
 @bot.event
 async def on_ready():
     print("BOT ONLINE:", bot.user)
-    asyncio.create_task(voice_xp_loop())
 
 bot.run(os.getenv("TOKEN"))
