@@ -22,7 +22,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 LEVEL_CHANNEL_ID = 1510080367892238336
 DATA_FILE = "data.json"
 
-# voice tracking (time-based)
+# uid -> timestamp when entered voice
 voice_activity = {}
 
 # ---------------- DATA ----------------
@@ -130,7 +130,6 @@ async def on_message(message):
 
     data[uid]["xp"] += random.randint(5, 15)
 
-    # stable level system
     while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
         data[uid]["xp"] -= xp_needed(data[uid]["level"])
         data[uid]["level"] += 1
@@ -139,7 +138,7 @@ async def on_message(message):
     save_data(data)
     await bot.process_commands(message)
 
-# ---------------- VOICE XP (FIXED) ----------------
+# ---------------- VOICE XP (FIXED CORE) ----------------
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -148,32 +147,62 @@ async def on_voice_state_update(member, before, after):
 
     uid = str(member.id)
 
-    # join voice → store time
+    # joined voice
     if after.channel and not before.channel:
         voice_activity[uid] = asyncio.get_event_loop().time()
 
-    # leave voice → calculate XP
+    # left voice → calculate final chunk
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
 
-        if start:
-            duration = asyncio.get_event_loop().time() - start
+        if not start:
+            return
 
-            data = load_data()
+        duration = asyncio.get_event_loop().time() - start
+
+        data = load_data()
+
+        if uid not in data:
+            data[uid] = {"xp": 0, "level": 1}
+
+        gained = int(duration // 10)  # 1 XP per 10 sec
+
+        data[uid]["xp"] += gained
+
+        while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
+            data[uid]["xp"] -= xp_needed(data[uid]["level"])
+            data[uid]["level"] += 1
+
+        save_data(data)
+
+# ---------------- BACKGROUND VOICE XP (REAL-TIME FIX) ----------------
+
+async def voice_xp_loop():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+        data = load_data()
+        now = asyncio.get_event_loop().time()
+
+        for uid, start_time in list(voice_activity.items()):
 
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            gained = int(duration // 10)  # 1 XP per 10 sec
+            # every 60 seconds = +6 XP
+            seconds = now - start_time
+            gained = int(seconds // 60) * 6
 
-            data[uid]["xp"] += gained
+            if gained > 0:
+                data[uid]["xp"] += gained
+                voice_activity[uid] = now
 
-            # level check
-            while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
-                data[uid]["xp"] -= xp_needed(data[uid]["level"])
-                data[uid]["level"] += 1
+                while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
+                    data[uid]["xp"] -= xp_needed(data[uid]["level"])
+                    data[uid]["level"] += 1
 
-            save_data(data)
+        save_data(data)
+        await asyncio.sleep(60)
 
 # ---------------- COMMANDS ----------------
 
@@ -207,5 +236,6 @@ async def rank(ctx, member: discord.Member = None):
 @bot.event
 async def on_ready():
     print("BOT ONLINE:", bot.user)
+    bot.loop.create_task(voice_xp_loop())
 
 bot.run(os.getenv("TOKEN"))
