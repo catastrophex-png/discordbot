@@ -72,7 +72,6 @@ async def send_level_up(user, level):
     img = Image.new("RGB", (900, 300), (20, 20, 35))
     draw = ImageDraw.Draw(img)
 
-    # gradient
     for y in range(300):
         draw.line([(0, y), (900, y)], fill=(20, 20 + y//10, 60 + y//6))
 
@@ -85,7 +84,6 @@ async def send_level_up(user, level):
         font_mid = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
-    # avatar
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     response = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(response.content)).convert("RGB")
@@ -97,7 +95,6 @@ async def send_level_up(user, level):
 
     img.paste(avatar, (40, 60), mask)
 
-    # text
     draw.text((260, 60), "LEVEL UP!", fill="white", font=font_big)
     draw.text((260, 120), user.display_name, fill="white", font=font_mid)
     draw.text((260, 170), f"Level {level}", fill="cyan", font=font_mid)
@@ -139,6 +136,8 @@ async def on_message(message):
 
 # ---------------- VOICE XP ----------------
 
+voice_activity = {}
+
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.bot:
@@ -170,7 +169,7 @@ async def voice_xp_loop():
         save_data(data)
         await asyncio.sleep(60)
 
-# ---------------- TIC TAC TOE (ВАША СТАРАЯ ВЕРСИЯ) ----------------
+# ---------------- TIC TAC TOE ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -266,7 +265,6 @@ class TTT(discord.ui.View):
 
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-
     view = TTT(ctx.author, opponent)
 
     await ctx.send(
@@ -290,11 +288,13 @@ async def rank(ctx, member: discord.Member = None):
     if uid not in data:
         data[uid] = {"xp": 0, "level": 1}
 
+    level = data[uid]["level"]
+
     await ctx.send(
         f"📊 {member.display_name}\n"
-        f"Level: {data[uid]['level']}\n"
-        f"XP: {data[uid]['xp']}\n"
-        f"Rank: {get_rank(data[uid]['level'])}"
+        f"Level: {level}\n"
+        f"Rank: {get_rank(level)}\n"
+        f"Title: {get_title(level)}"
     )
 
 # ---------------- START ----------------
