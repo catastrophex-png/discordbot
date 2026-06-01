@@ -62,72 +62,62 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL UP CARD ----------------
+# ---------------- LEVEL UP ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
     if not channel:
         return
 
-    width, height = 900, 300
-    img = Image.new("RGB", (width, height), (15, 15, 25))
+    img = Image.new("RGB", (800, 250), (20, 20, 30))
     draw = ImageDraw.Draw(img)
 
-    # gradient background
-    for y in range(height):
-        r = int(20 + y * 0.05)
-        g = int(25 + y * 0.08)
-        b = int(50 + y * 0.15)
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
+    for y in range(250):
+        draw.line([(0, y), (800, y)], fill=(20, 20 + y//10, 50 + y//5))
 
-    # fonts
     try:
-        font_big = ImageFont.truetype("arial.ttf", 42)
-        font_mid = ImageFont.truetype("arial.ttf", 30)
-        font_small = ImageFont.truetype("arial.ttf", 24)
+        font_big = ImageFont.truetype("arial.ttf", 40)
+        font_mid = ImageFont.truetype("arial.ttf", 28)
     except:
         font_big = ImageFont.load_default()
         font_mid = ImageFont.load_default()
-        font_small = ImageFont.load_default()
 
-    # avatar
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     response = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(response.content)).convert("RGB")
-    avatar = avatar.resize((180, 180))
+    avatar = avatar.resize((150, 150))
 
-    mask = Image.new("L", (180, 180), 0)
-    mdraw = ImageDraw.Draw(mask)
-    mdraw.ellipse((0, 0, 180, 180), fill=255)
+    mask = Image.new("L", (150, 150), 0)
+    d = ImageDraw.Draw(mask)
+    d.ellipse((0, 0, 150, 150), fill=255)
 
-    # shadow
-    draw.ellipse((40, 60, 230, 250), fill=(0, 0, 0, 120))
+    img.paste(avatar, (30, 50), mask)
 
-    img.paste(avatar, (50, 70), mask)
+    draw.text((220, 60), "LEVEL UP!", fill="white", font=font_big)
+    draw.text((220, 120), user.display_name, fill="white", font=font_mid)
+    draw.text((220, 160), f"Level: {level}", fill="cyan", font=font_mid)
+    draw.text((220, 200), get_rank(level), fill="gold", font=font_mid)
 
-    # text
-    draw.text((260, 60), "LEVEL UP!", fill=(255, 255, 255), font=font_big)
-    draw.text((260, 120), user.display_name, fill=(220, 220, 220), font=font_mid)
-
-    draw.text((260, 170), f"Level {level}", fill=(0, 200, 255), font=font_mid)
-    draw.text((260, 210), get_rank(level), fill=(255, 215, 0), font=font_small)
-    draw.text((260, 245), get_title(level), fill=(255, 140, 0), font=font_small)
-
-    path = f"levelup_{user.id}.png"
+    path = f"lvl_{user.id}.png"
     img.save(path)
 
     await channel.send(
-        content=f"🎉 {user.mention} повысил уровень!",
+        content=f"🎉 {user.mention} leveled up!",
         file=discord.File(path)
     )
 
     os.remove(path)
 
-# ---------------- TEXT XP ----------------
+# ---------------- XP ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
+        return
+
+    # 🔥 НЕ ЛОМАЕМ ИГРЫ
+    if message.content.startswith("!ttt") or message.content.startswith("!move"):
+        await bot.process_commands(message)
         return
 
     data = load_data()
@@ -138,15 +128,13 @@ async def on_message(message):
 
     data[uid]["xp"] += random.randint(5, 15)
 
-    level = data[uid]["level"]
-
-    if data[uid]["xp"] >= xp_needed(level):
-        data[uid]["level"] += 1
+    if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
         data[uid]["xp"] = 0
-
+        data[uid]["level"] += 1
         await send_level_up(message.author, data[uid]["level"])
 
     save_data(data)
+
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -160,7 +148,6 @@ async def on_voice_state_update(member, before, after):
 
     if after.channel and not before.channel:
         voice_activity[uid] = True
-
     elif before.channel and not after.channel:
         voice_activity.pop(uid, None)
 
@@ -174,60 +161,104 @@ async def voice_xp_loop():
             if uid not in data:
                 data[uid] = {"xp": 0, "level": 1}
 
-            data[uid]["xp"] += 1  # per minute
+            data[uid]["xp"] += 1
 
-            level = data[uid]["level"]
-
-            if data[uid]["xp"] >= xp_needed(level):
-                data[uid]["level"] += 1
+            if data[uid]["xp"] >= xp_needed(data[uid]["level"]):
                 data[uid]["xp"] = 0
+                data[uid]["level"] += 1
 
         save_data(data)
         await asyncio.sleep(60)
+
+# ---------------- TIC TAC TOE ----------------
+
+games = {}
+
+def empty_board():
+    return [" " for _ in range(9)]
+
+def check_winner(b):
+    wins = [(0,1,2),(3,4,5),(6,7,8),
+            (0,3,6),(1,4,7),(2,5,8),
+            (0,4,8),(2,4,6)]
+    for a,b2,c in wins:
+        if b[a] == b[b2] == b[c] != " ":
+            return b[a]
+    return None
+
+def render_board(b):
+    return f"""
+{b[0]} | {b[1]} | {b[2]}
+---------
+{b[3]} | {b[4]} | {b[5]}
+---------
+{b[6]} | {b[7]} | {b[8]}
+"""
+
+@bot.command()
+async def ttt(ctx, opponent: discord.Member):
+    games[ctx.channel.id] = {
+        "board": empty_board(),
+        "turn": ctx.author.id,
+        "p1": ctx.author.id,
+        "p2": opponent.id
+    }
+
+    await ctx.send(
+        f"🎮 Игра началась!\n\n{ctx.author.mention} vs {opponent.mention}\n"
+        f"Напиши `!move 1-9`"
+    )
+
+@bot.command()
+async def move(ctx, pos: int):
+    game = games.get(ctx.channel.id)
+    if not game:
+        return
+
+    if ctx.author.id not in [game["p1"], game["p2"]]:
+        return
+
+    if ctx.author.id != game["turn"]:
+        return
+
+    pos -= 1
+    if game["board"][pos] != " ":
+        return
+
+    symbol = "X" if ctx.author.id == game["p1"] else "O"
+    game["board"][pos] = symbol
+
+    winner = check_winner(game["board"])
+
+    if winner:
+        await ctx.send(render_board(game["board"]) + f"\n🏆 Победил {ctx.author.mention}")
+        del games[ctx.channel.id]
+        return
+
+    game["turn"] = game["p2"] if game["turn"] == game["p1"] else game["p1"]
+
+    await ctx.send(render_board(game["board"]))
 
 # ---------------- COMMANDS ----------------
 
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-    uid = str(member.id)
-
     data = load_data()
 
+    uid = str(member.id)
     if uid not in data:
         data[uid] = {"xp": 0, "level": 1}
 
-    level = data[uid]["level"]
-    xp = data[uid]["xp"]
-
     await ctx.send(
-        f"📊 **{member.display_name}**\n\n"
-        f"🏆 Level: **{level}**\n"
-        f"✨ XP: **{xp} / {xp_needed(level)}**\n"
-        f"📛 Rank: **{get_rank(level)}**\n"
-        f"💬 Title: **{get_title(level)}**"
+        f"📊 {member.display_name}\n"
+        f"Level: {data[uid]['level']}\n"
+        f"XP: {data[uid]['xp']}"
     )
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send("🟢 бот жив")
-
-@bot.command()
-async def fortuna(ctx):
-    await ctx.send("🔮 Напиши варианты, потом 'готово'")
-
-    variants = []
-
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    while True:
-        msg = await bot.wait_for("message", check=check)
-        if msg.content.lower() == "готово":
-            break
-        variants.append(msg.content)
-
-    await ctx.send(f"✨ Победитель: **{random.choice(variants)}**")
+    await ctx.send("🟢 online")
 
 # ---------------- READY ----------------
 
@@ -235,7 +266,5 @@ async def fortuna(ctx):
 async def on_ready():
     print("BOT ONLINE:", bot.user)
     asyncio.create_task(voice_xp_loop())
-
-# ---------------- RUN ----------------
 
 bot.run(os.getenv("TOKEN"))
