@@ -90,7 +90,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL CARD ----------------
+# ---------------- CARD ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -101,14 +101,11 @@ async def send_level_up(user, level):
     img = Image.new("RGB", (WIDTH, HEIGHT), (18, 18, 28))
     draw = ImageDraw.Draw(img)
 
-    # background gradient
     for y in range(HEIGHT):
-        r = 20
         g = int(25 + (y / HEIGHT) * 40)
         b = int(45 + (y / HEIGHT) * 80)
-        draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+        draw.line([(0, y), (WIDTH, y)], fill=(20, g, b))
 
-    # fonts
     try:
         font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
         font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
@@ -116,7 +113,6 @@ async def send_level_up(user, level):
     except:
         font_big = font_name = font_mid = ImageFont.load_default()
 
-    # avatar
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     r = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
@@ -131,30 +127,12 @@ async def send_level_up(user, level):
     img.paste((40, 40, 60), (45, 65), border)
     img.paste(avatar, (50, 70), mask)
 
-    # text
-    draw.text((250, 35), "LEVEL UP", fill=(255, 255, 255), font=font_big)
-    draw.text((250, 100), user.display_name, fill=(230, 230, 230), font=font_name)
+    draw.text((250, 35), "LEVEL UP", fill="white", font=font_big)
+    draw.text((250, 100), user.display_name, fill="white", font=font_name)
 
     draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
     draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
     draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
-
-    # XP bar
-    bar_x, bar_y = 250, 265
-    bar_w, bar_h = 500, 18
-
-    draw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
-        radius=8,
-        fill=(40, 40, 60)
-    )
-
-    fill_w = int(bar_w * 0.6)
-    draw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h),
-        radius=8,
-        fill=(80, 180, 255)
-    )
 
     path = f"lvl_{user.id}.png"
     img.save(path)
@@ -166,7 +144,7 @@ async def send_level_up(user, level):
 
     os.remove(path)
 
-# ---------------- MESSAGE XP ----------------
+# ---------------- XP ON MESSAGE ----------------
 
 @bot.event
 async def on_message(message):
@@ -184,6 +162,8 @@ async def on_message(message):
         await send_level_up(message.author, data["level"])
 
     await update_user(user_id, data["xp"], data["level"])
+
+    # ВАЖНО: команды работают только с этим
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -217,6 +197,10 @@ async def on_voice_state_update(member, before, after):
 # ---------------- COMMANDS ----------------
 
 @bot.command()
+async def ping(ctx):
+    await ctx.send("pong")
+
+@bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
     data = await get_user(member.id)
@@ -228,8 +212,6 @@ async def rank(ctx, member: discord.Member = None):
         f"Rank: {get_rank(data['level'])}\n"
         f"Title: {get_title(data['level'])}"
     )
-
-# ---------------- TEST CARD COMMAND ----------------
 
 @bot.command()
 async def testcard(ctx, member: discord.Member = None, level: int = 1):
