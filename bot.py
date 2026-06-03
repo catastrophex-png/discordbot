@@ -17,15 +17,16 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- CONFIG ----------------
+# ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 voice_activity = {}
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 
 async def init_db():
     global db_pool
@@ -65,7 +66,7 @@ async def update_user(user_id: int, xp: int, level: int):
             DO UPDATE SET xp = $2, level = $3
         """, user_id, xp, level)
 
-# ---------------- XP ----------------
+# ---------------- XP SYSTEM ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -90,155 +91,229 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- FONT ----------------
+# ---------------- LEVEL CARD ----------------
 
-def load_font(size):
+async def send_level_up(user, level):
+    channel = bot.get_channel(LEVEL_CHANNEL_ID)
+    if not channel:
+        return
+
+    img = Image.new("RGB", (900, 300), (18, 18, 28))
+    draw = ImageDraw.Draw(img)
+
+    for y in range(300):
+        draw.line([(0, y), (900, y)], fill=(20, 20 + y//20, 40 + y//10))
+
     try:
-        return ImageFont.truetype("arial.ttf", size)
+        font_big = ImageFont.truetype("arial.ttf", 44)
+        font_name = ImageFont.truetype("arial.ttf", 36)
+        font_mid = ImageFont.truetype("arial.ttf", 26)
     except:
-        return ImageFont.load_default()
+        font_big = font_name = font_mid = ImageFont.load_default()
 
-# ---------------- FIXED CARD ----------------
+    avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
+    r = requests.get(avatar_url)
+    avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
+    avatar = avatar.resize((180, 180))
 
-async def send_level_up(user, level, xp, max_xp):
-    try:
-        channel = bot.get_channel(LEVEL_CHANNEL_ID)
-        if not channel:
-            return
+    mask = Image.new("L", (180, 180), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, 180, 180), fill=255)
 
-        W, H = 900, 300
+    img.paste(avatar, (50, 60), mask)
 
-        img = Image.new("RGB", (W, H), (12, 12, 20))
-        draw = ImageDraw.Draw(img)
+    draw.text((260, 40), "LEVEL UP", fill="white", font=font_big)
+    draw.text((260, 110), user.display_name, fill="white", font=font_name)
+    draw.text((260, 160), f"Level: {level}", fill="cyan", font=font_mid)
+    draw.text((260, 200), get_rank(level), fill="gold", font=font_mid)
+    draw.text((260, 240), get_title(level), fill="orange", font=font_mid)
 
-        for y in range(H):
-            draw.line([(0, y), (W, y)], fill=(18, 18 + y // 25, 35 + y // 10))
+    path = f"lvl_{user.id}.png"
+    img.save(path)
 
-        font_big = load_font(44)
-        font_name = load_font(36)
-        font_mid = load_font(24)
-        font_small = load_font(18)
+    await channel.send(
+        content=f"🎉 {user.mention} level up!",
+        file=discord.File(path)
+    )
 
-        # avatar safe
-        try:
-            avatar_url = user.display_avatar.url
-            r = requests.get(avatar_url, timeout=5)
-            avatar = Image.open(io.BytesIO(r.content)).convert("RGBA")
-        except:
-            avatar = Image.new("RGBA", (180, 180), (80, 80, 80, 255))
+    os.remove(path)
 
-        avatar = avatar.resize((180, 180))
-
-        mask = Image.new("L", (180, 180), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, 180, 180), fill=255)
-
-        avatar_circle = Image.new("RGBA", (180, 180))
-        avatar_circle.paste(avatar, (0, 0), mask)
-
-        border = Image.new("RGBA", (190, 190), (0, 0, 0, 0))
-        bd = ImageDraw.Draw(border)
-        bd.ellipse((0, 0, 190, 190), outline=(0, 220, 255), width=4)
-        border.paste(avatar_circle, (5, 5), avatar_circle)
-
-        img.paste(border, (40, 60), border)
-
-        draw.text((260, 40), "LEVEL UP", font=font_big, fill=(255, 255, 255))
-        draw.text((260, 100), user.display_name, font=font_name, fill=(255, 255, 255))
-
-        draw.text((260, 155), f"Level: {level}", font=font_mid, fill=(0, 220, 255))
-        draw.text((260, 190), get_rank(level), font=font_mid, fill=(255, 200, 0))
-        draw.text((260, 225), get_title(level), font=font_mid, fill=(200, 200, 200))
-
-        progress = xp / max_xp if max_xp else 0
-
-        bar_x, bar_y = 260, 265
-        bar_w, bar_h = 580, 18
-
-        draw.rounded_rectangle(
-            [bar_x, bar_y, bar_x + bar_w, bar_y + bar_h],
-            radius=8,
-            fill=(35, 35, 55)
-        )
-
-        fill_w = int(bar_w * max(0, min(progress, 1)))
-
-        if fill_w > 0:
-            draw.rounded_rectangle(
-                [bar_x, bar_y, bar_x + fill_w, bar_y + bar_h],
-                radius=8,
-                fill=(0, 220, 255)
-            )
-
-        draw.text((260, 240), f"{xp}/{max_xp} XP", font=font_small, fill=(180, 180, 180))
-
-        buffer = io.BytesIO()
-        img.save(buffer, "PNG")
-        buffer.seek(0)
-
-        await channel.send(
-            content=f"🎉 {user.mention} level up!",
-            file=discord.File(buffer, "level.png")
-        )
-
-    except Exception as e:
-        print("CARD ERROR:", e)
-
-# ---------------- XP ----------------
+# ---------------- MESSAGE XP ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    data = await get_user(message.author.id)
+    user_id = message.author.id
+
+    data = await get_user(user_id)
 
     data["xp"] += random.randint(5, 15)
 
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
         data["level"] += 1
+        await send_level_up(message.author, data["level"])
 
-        await send_level_up(
-            message.author,
-            data["level"],
-            data["xp"],
-            xp_needed(data["level"])
-        )
-
-    await update_user(message.author.id, data["xp"], data["level"])
+    await update_user(user_id, data["xp"], data["level"])
 
     await bot.process_commands(message)
 
-# ---------------- ERRORS ----------------
+# ---------------- VOICE XP ----------------
 
 @bot.event
-async def on_command_error(ctx, error):
-    print("COMMAND ERROR:", error)
-    await ctx.send(f"❌ Error: {error}")
+async def on_voice_state_update(member, before, after):
+    if member.bot:
+        return
+
+    uid = member.id
+
+    if after.channel and not before.channel:
+        voice_activity[uid] = asyncio.get_event_loop().time()
+
+    elif before.channel and not after.channel:
+        start = voice_activity.pop(uid, None)
+
+        if not start:
+            return
+
+        duration = asyncio.get_event_loop().time() - start
+
+        data = await get_user(uid)
+
+        data["xp"] += int(duration // 10)
+
+        while data["xp"] >= xp_needed(data["level"]):
+            data["xp"] -= xp_needed(data["level"])
+            data["level"] += 1
+
+        await update_user(uid, data["xp"], data["level"])
+
+# ---------------- TTT ----------------
+
+WIN = [
+    (0,1,2),(3,4,5),(6,7,8),
+    (0,3,6),(1,4,7),(2,5,8),
+    (0,4,8),(2,4,6)
+]
+
+def check(board):
+    for a, b, c in WIN:
+        if board[a] == board[b] == board[c] and board[a] != " ":
+            return board[a]
+    return None
+
+
+class TTT(discord.ui.View):
+    def __init__(self, p1, p2, board=None, turn=0):
+        super().__init__(timeout=None)
+
+        self.players = [p1, p2]
+        self.board = board or [" "] * 9
+        self.turn = turn
+
+        self.build()
+
+    def build(self):
+        self.clear_items()
+
+        for i in range(9):
+            mark = self.board[i]
+
+            btn = discord.ui.Button(
+                label=mark if mark != " " else "⬜",
+                style=discord.ButtonStyle.secondary,
+                row=i // 3,
+                disabled=(mark != " ")
+            )
+
+            async def callback(interaction, index=i):
+
+                if interaction.user != self.players[self.turn]:
+                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
+
+                if self.board[index] != " ":
+                    return await interaction.response.send_message("⛔ Занято", ephemeral=True)
+
+                self.board[index] = "❌" if self.turn == 0 else "⭕"
+
+                winner = check(self.board)
+
+                if winner:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content=f"🏆 Победитель: {interaction.user.mention}",
+                        view=self
+                    )
+
+                if " " not in self.board:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content="🤝 Ничья",
+                        view=self
+                    )
+
+                self.turn = 1 - self.turn
+
+                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+
+                await interaction.response.edit_message(
+                    content=f"🎮 Ход: {self.players[self.turn].mention}",
+                    view=new_view
+                )
+
+            btn.callback = callback
+            self.add_item(btn)
 
 # ---------------- COMMANDS ----------------
 
 @bot.command()
-async def ping(ctx):
-    await ctx.send("pong")
-
-@bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
+
     data = await get_user(member.id)
+
+    lvl = data["level"]
+    xp = data["xp"]
 
     await ctx.send(
         f"📊 {member.display_name}\n"
-        f"Level: {data['level']}\n"
-        f"XP: {data['xp']}/{xp_needed(data['level'])}\n"
-        f"Rank: {get_rank(data['level'])}\n"
-        f"Title: {get_title(data['level'])}"
+        f"Level: {lvl}\n"
+        f"XP: {xp}/{xp_needed(lvl)}\n"
+        f"Rank: {get_rank(lvl)}\n"
+        f"Title: {get_title(lvl)}"
     )
 
 @bot.command()
-async def testcard(ctx, member: discord.Member = None, level: int = 1):
-    member = member or ctx.author
-    await send_level_up(member, level, 0, xp_needed(level))
+async def ttt(ctx, opponent: discord.Member):
+    view = TTT(ctx.author, opponent)
+    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=view)
+
+@bot.command(name="фортуна")
+async def fortuna(ctx):
+    choices = []
+
+    await ctx.send("🔮 Вводи варианты. Напиши 'готово' чтобы завершить.")
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    while True:
+        msg = await bot.wait_for("message", check=check)
+
+        if msg.content.lower() == "готово":
+            break
+
+        choices.append(msg.content)
+
+    if not choices:
+        return await ctx.send("❌ нет вариантов")
+
+    await ctx.send(f"🔮 Выбор...\n✨ {random.choice(choices)}")
 
 # ---------------- START ----------------
 
