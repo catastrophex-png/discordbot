@@ -25,65 +25,45 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 voice_activity = {}
 db_pool = None
 
-# ---------------- START ----------------
+# ---------------- DB ----------------
 
-@bot.event
-async def on_ready():
+async def init_db():
     global db_pool
-    print("BOT ONLINE:", bot.user)
+    db_pool = await asyncpg.create_pool(DATABASE_URL)
 
-    try:
-        db_pool = await asyncpg.create_pool(DATABASE_URL)
-
-        async with db_pool.acquire() as conn:
-            await conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                xp INT DEFAULT 0,
-                level INT DEFAULT 1
-            )
-            """)
-
-        print("DB READY")
-
-    except Exception as e:
-        print("DB ERROR:", e)
-
-# ---------------- DATABASE ----------------
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            xp INT DEFAULT 0,
+            level INT DEFAULT 1
+        )
+        """)
 
 async def get_user(user_id: int):
-    try:
-        async with db_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT xp, level FROM users WHERE user_id=$1",
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT xp, level FROM users WHERE user_id=$1",
+            user_id
+        )
+
+        if not row:
+            await conn.execute(
+                "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
                 user_id
             )
+            return {"xp": 0, "level": 1}
 
-            if not row:
-                await conn.execute(
-                    "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
-                    user_id
-                )
-                return {"xp": 0, "level": 1}
-
-            return {"xp": row["xp"], "level": row["level"]}
-
-    except Exception as e:
-        print("GET USER ERROR:", e)
-        return {"xp": 0, "level": 1}
+        return {"xp": row["xp"], "level": row["level"]}
 
 async def update_user(user_id: int, xp: int, level: int):
-    try:
-        async with db_pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO users (user_id, xp, level)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id)
-                DO UPDATE SET xp = $2, level = $3
-            """, user_id, xp, level)
-
-    except Exception as e:
-        print("UPDATE USER ERROR:", e)
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO users (user_id, xp, level)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id)
+            DO UPDATE SET xp = $2, level = $3
+        """, user_id, xp, level)
 
 # ---------------- XP ----------------
 
@@ -110,90 +90,130 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- CARD ----------------
+# ---------------- FONT ----------------
 
-async def send_level_up(user, level):
+def load_font(size):
+    try:
+        return ImageFont.truetype("arial.ttf", size)
+    except:
+        return ImageFont.load_default()
+
+# ---------------- FIXED CARD ----------------
+
+async def send_level_up(user, level, xp, max_xp):
     try:
         channel = bot.get_channel(LEVEL_CHANNEL_ID)
         if not channel:
             return
 
-        img = Image.new("RGB", (900, 300), (18, 18, 28))
+        W, H = 900, 300
+
+        img = Image.new("RGB", (W, H), (12, 12, 20))
         draw = ImageDraw.Draw(img)
 
-        for y in range(300):
-            g = int(25 + (y / 300) * 40)
-            b = int(45 + (y / 300) * 80)
-            draw.line([(0, y), (900, y)], fill=(20, g, b))
+        for y in range(H):
+            draw.line([(0, y), (W, y)], fill=(18, 18 + y // 25, 35 + y // 10))
 
+        font_big = load_font(44)
+        font_name = load_font(36)
+        font_mid = load_font(24)
+        font_small = load_font(18)
+
+        # avatar safe
         try:
-            font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
-            font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
-            font_mid = ImageFont.truetype("DejaVuSans.ttf", 26)
-        except:
-            font_big = font_name = font_mid = ImageFont.load_default()
-
-        avatar_url = getattr(user.avatar, "url", None) or user.default_avatar.url
-
-        try:
+            avatar_url = user.display_avatar.url
             r = requests.get(avatar_url, timeout=5)
-            avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
+            avatar = Image.open(io.BytesIO(r.content)).convert("RGBA")
         except:
-            avatar = Image.new("RGB", (170, 170), (120, 120, 120))
+            avatar = Image.new("RGBA", (180, 180), (80, 80, 80, 255))
 
-        avatar = avatar.resize((170, 170))
+        avatar = avatar.resize((180, 180))
 
-        mask = Image.new("L", (170, 170), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, 170, 170), fill=255)
+        mask = Image.new("L", (180, 180), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 180, 180), fill=255)
 
-        img.paste(avatar, (50, 70), mask)
+        avatar_circle = Image.new("RGBA", (180, 180))
+        avatar_circle.paste(avatar, (0, 0), mask)
 
-        draw.text((250, 35), "LEVEL UP", fill="white", font=font_big)
-        draw.text((250, 100), user.display_name, fill="white", font=font_name)
-        draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
-        draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
-        draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
+        border = Image.new("RGBA", (190, 190), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(border)
+        bd.ellipse((0, 0, 190, 190), outline=(0, 220, 255), width=4)
+        border.paste(avatar_circle, (5, 5), avatar_circle)
 
-        path = f"lvl_{user.id}.png"
-        img.save(path)
+        img.paste(border, (40, 60), border)
 
-        await channel.send(file=discord.File(path))
-        os.remove(path)
+        draw.text((260, 40), "LEVEL UP", font=font_big, fill=(255, 255, 255))
+        draw.text((260, 100), user.display_name, font=font_name, fill=(255, 255, 255))
+
+        draw.text((260, 155), f"Level: {level}", font=font_mid, fill=(0, 220, 255))
+        draw.text((260, 190), get_rank(level), font=font_mid, fill=(255, 200, 0))
+        draw.text((260, 225), get_title(level), font=font_mid, fill=(200, 200, 200))
+
+        progress = xp / max_xp if max_xp else 0
+
+        bar_x, bar_y = 260, 265
+        bar_w, bar_h = 580, 18
+
+        draw.rounded_rectangle(
+            [bar_x, bar_y, bar_x + bar_w, bar_y + bar_h],
+            radius=8,
+            fill=(35, 35, 55)
+        )
+
+        fill_w = int(bar_w * max(0, min(progress, 1)))
+
+        if fill_w > 0:
+            draw.rounded_rectangle(
+                [bar_x, bar_y, bar_x + fill_w, bar_y + bar_h],
+                radius=8,
+                fill=(0, 220, 255)
+            )
+
+        draw.text((260, 240), f"{xp}/{max_xp} XP", font=font_small, fill=(180, 180, 180))
+
+        buffer = io.BytesIO()
+        img.save(buffer, "PNG")
+        buffer.seek(0)
+
+        await channel.send(
+            content=f"🎉 {user.mention} level up!",
+            file=discord.File(buffer, "level.png")
+        )
 
     except Exception as e:
         print("CARD ERROR:", e)
 
-# ---------------- XP HANDLER ----------------
-
-async def handle_xp(user):
-    try:
-        data = await get_user(user.id)
-
-        data["xp"] += random.randint(5, 15)
-
-        while data["xp"] >= xp_needed(data["level"]):
-            data["xp"] -= xp_needed(data["level"])
-            data["level"] += 1
-            await send_level_up(user, data["level"])
-
-        await update_user(user.id, data["xp"], data["level"])
-
-    except Exception as e:
-        print("XP ERROR:", e)
+# ---------------- XP ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    await handle_xp(message.author)
+    data = await get_user(message.author.id)
+
+    data["xp"] += random.randint(5, 15)
+
+    while data["xp"] >= xp_needed(data["level"]):
+        data["xp"] -= xp_needed(data["level"])
+        data["level"] += 1
+
+        await send_level_up(
+            message.author,
+            data["level"],
+            data["xp"],
+            xp_needed(data["level"])
+        )
+
+    await update_user(message.author.id, data["xp"], data["level"])
+
     await bot.process_commands(message)
 
-# ---------------- ERROR ----------------
+# ---------------- ERRORS ----------------
 
 @bot.event
 async def on_command_error(ctx, error):
-    print("COMMAND ERROR:", repr(error))
+    print("COMMAND ERROR:", error)
     await ctx.send(f"❌ Error: {error}")
 
 # ---------------- COMMANDS ----------------
@@ -218,121 +238,13 @@ async def rank(ctx, member: discord.Member = None):
 @bot.command()
 async def testcard(ctx, member: discord.Member = None, level: int = 1):
     member = member or ctx.author
-    await send_level_up(member, level)
+    await send_level_up(member, level, 0, xp_needed(level))
 
-# ---------------- TTT ----------------
+# ---------------- START ----------------
 
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a, b, c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2):
-        super().__init__(timeout=None)
-
-        self.players = [p1, p2]
-        self.board = [" "] * 9
-        self.turn = 0
-
-        self.build()
-
-    def build(self):
-        self.clear_items()
-
-        for i in range(9):
-            mark = self.board[i]
-
-            btn = discord.ui.Button(
-                label=mark if mark != " " else "⬜",
-                style=discord.ButtonStyle.secondary,
-                row=i // 3,
-                disabled=(mark != " ")
-            )
-
-            async def callback(interaction, index=i):
-
-                if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("⛔ не твой ход", ephemeral=True)
-
-                if self.board[index] != " ":
-                    return await interaction.response.send_message("⛔ занято", ephemeral=True)
-
-                self.board[index] = "❌" if self.turn == 0 else "⭕"
-
-                winner = check(self.board)
-
-                if winner:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=self
-                    )
-
-                if " " not in self.board:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content="🤝 Ничья",
-                        view=self
-                    )
-
-                self.turn = 1 - self.turn
-
-                new_view = TTT(self.players[0], self.players[1])
-                new_view.board = self.board
-                new_view.turn = self.turn
-                new_view.build()
-
-                await interaction.response.edit_message(
-                    content=f"🎮 Ход: {self.players[self.turn].mention}",
-                    view=new_view
-                )
-
-            btn.callback = callback
-            self.add_item(btn)
-
-
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
-    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=view)
-
-# ---------------- FORTUNA ----------------
-
-@bot.command(name="fortuna")
-async def fortuna(ctx):
-    choices = []
-
-    await ctx.send("🔮 Вводи варианты. Напиши 'готово' чтобы завершить.")
-
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    while True:
-        msg = await bot.wait_for("message", check=check)
-
-        if msg.content.lower() == "готово":
-            break
-
-        choices.append(msg.content)
-
-    if not choices:
-        return await ctx.send("❌ нет вариантов")
-
-    await ctx.send(f"🔮 Выбор...\n✨ {random.choice(choices)}")
-
-# ---------------- RUN ----------------
+@bot.event
+async def on_ready():
+    await init_db()
+    print("BOT ONLINE:", bot.user)
 
 bot.run(os.getenv("TOKEN"))
