@@ -20,7 +20,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
-
 voice_activity = {}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -91,51 +90,95 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
+# ---------------- UI HELPERS ----------------
+
+def load_font(size):
+    try:
+        return ImageFont.truetype("arial.ttf", size)
+    except:
+        return ImageFont.load_default()
+
+def draw_bar(draw, x, y, w, h, progress, fill, bg):
+    draw.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=bg)
+
+    fill_w = int(w * max(0, min(progress, 1)))
+    if fill_w > 0:
+        draw.rounded_rectangle([x, y, x + fill_w, y + h], radius=10, fill=fill)
+
 # ---------------- LEVEL CARD ----------------
 
-async def send_level_up(user, level):
+async def send_level_up(user, level, xp, max_xp):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
     if not channel:
         return
 
-    img = Image.new("RGB", (900, 300), (18, 18, 28))
+    W, H = 900, 300
+
+    # фон
+    img = Image.new("RGB", (W, H), (15, 15, 25))
     draw = ImageDraw.Draw(img)
 
-    for y in range(300):
-        draw.line([(0, y), (900, y)], fill=(20, 20 + y//20, 40 + y//10))
+    for y in range(H):
+        draw.line([(0, y), (W, y)], fill=(18, 18 + y // 20, 40 + y // 10))
 
-    try:
-        font_big = ImageFont.truetype("arial.ttf", 44)
-        font_name = ImageFont.truetype("arial.ttf", 36)
-        font_mid = ImageFont.truetype("arial.ttf", 26)
-    except:
-        font_big = font_name = font_mid = ImageFont.load_default()
+    # шрифты
+    font_big = load_font(46)
+    font_name = load_font(38)
+    font_mid = load_font(24)
+    font_small = load_font(18)
 
+    # аватар
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     r = requests.get(avatar_url)
-    avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
+    avatar = Image.open(io.BytesIO(r.content)).convert("RGBA")
     avatar = avatar.resize((180, 180))
 
     mask = Image.new("L", (180, 180), 0)
     ImageDraw.Draw(mask).ellipse((0, 0, 180, 180), fill=255)
 
-    img.paste(avatar, (50, 60), mask)
+    avatar_bg = Image.new("RGBA", (180, 180))
+    avatar_bg.paste(avatar, (0, 0), mask)
 
-    draw.text((260, 40), "LEVEL UP", fill="white", font=font_big)
-    draw.text((260, 110), user.display_name, fill="white", font=font_name)
-    draw.text((260, 160), f"Level: {level}", fill="cyan", font=font_mid)
-    draw.text((260, 200), get_rank(level), fill="gold", font=font_mid)
-    draw.text((260, 240), get_title(level), fill="orange", font=font_mid)
+    border = Image.new("RGBA", (190, 190), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(border)
+    bd.ellipse((0, 0, 190, 190), outline=(0, 220, 255), width=4)
+    border.paste(avatar_bg, (5, 5), avatar_bg)
 
-    path = f"lvl_{user.id}.png"
-    img.save(path)
+    img.paste(border, (40, 60), border)
+
+    # текст
+    draw.text((260, 40), "LEVEL UP", font=font_big, fill=(255, 255, 255))
+    draw.text((260, 100), user.display_name, font=font_name, fill=(255, 255, 255))
+
+    draw.text((260, 155), f"Level: {level}", font=font_mid, fill=(0, 220, 255))
+    draw.text((260, 190), get_rank(level), font=font_mid, fill=(255, 200, 0))
+    draw.text((260, 225), get_title(level), font=font_mid, fill=(200, 200, 200))
+
+    # XP bar
+    progress = xp / max_xp if max_xp else 0
+
+    draw_bar(
+        draw,
+        260,
+        265,
+        580,
+        20,
+        progress,
+        fill=(0, 220, 255),
+        bg=(40, 40, 60)
+    )
+
+    draw.text((260, 240), f"{xp}/{max_xp} XP", font=font_small, fill=(180, 180, 180))
+
+    # отправка
+    buffer = io.BytesIO()
+    img.save(buffer, "PNG")
+    buffer.seek(0)
 
     await channel.send(
         content=f"🎉 {user.mention} level up!",
-        file=discord.File(path)
+        file=discord.File(buffer, "level.png")
     )
-
-    os.remove(path)
 
 # ---------------- MESSAGE XP ----------------
 
@@ -145,7 +188,6 @@ async def on_message(message):
         return
 
     user_id = message.author.id
-
     data = await get_user(user_id)
 
     data["xp"] += random.randint(5, 15)
@@ -153,7 +195,13 @@ async def on_message(message):
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
         data["level"] += 1
-        await send_level_up(message.author, data["level"])
+
+        await send_level_up(
+            message.author,
+            data["level"],
+            data["xp"],
+            xp_needed(data["level"])
+        )
 
     await update_user(user_id, data["xp"], data["level"])
 
@@ -173,14 +221,12 @@ async def on_voice_state_update(member, before, after):
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
-
         if not start:
             return
 
         duration = asyncio.get_event_loop().time() - start
 
         data = await get_user(uid)
-
         data["xp"] += int(duration // 10)
 
         while data["xp"] >= xp_needed(data["level"]):
@@ -258,7 +304,6 @@ class TTT(discord.ui.View):
                     )
 
                 self.turn = 1 - self.turn
-
                 new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
 
                 await interaction.response.edit_message(
@@ -274,7 +319,6 @@ class TTT(discord.ui.View):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-
     data = await get_user(member.id)
 
     lvl = data["level"]
@@ -304,10 +348,8 @@ async def fortuna(ctx):
 
     while True:
         msg = await bot.wait_for("message", check=check)
-
         if msg.content.lower() == "готово":
             break
-
         choices.append(msg.content)
 
     if not choices:
