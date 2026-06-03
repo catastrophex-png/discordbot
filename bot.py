@@ -20,7 +20,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
-
 voice_activity = {}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -91,7 +90,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL CARD (UPDATED) ----------------
+# ---------------- LEVEL CARD ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -102,14 +101,14 @@ async def send_level_up(user, level):
     img = Image.new("RGB", (WIDTH, HEIGHT), (18, 18, 28))
     draw = ImageDraw.Draw(img)
 
-    # gradient background
+    # background gradient
     for y in range(HEIGHT):
         r = 20
         g = int(25 + (y / HEIGHT) * 40)
         b = int(45 + (y / HEIGHT) * 80)
         draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
-    # fonts (safe for Railway)
+    # fonts
     try:
         font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
         font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
@@ -201,7 +200,6 @@ async def on_voice_state_update(member, before, after):
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
-
         if not start:
             return
 
@@ -230,6 +228,13 @@ async def rank(ctx, member: discord.Member = None):
         f"Rank: {get_rank(data['level'])}\n"
         f"Title: {get_title(data['level'])}"
     )
+
+# ---------------- TEST CARD COMMAND ----------------
+
+@bot.command()
+async def testcard(ctx, member: discord.Member = None, level: int = 1):
+    member = member or ctx.author
+    await send_level_up(member, level)
 
 # ---------------- START ----------------
 
