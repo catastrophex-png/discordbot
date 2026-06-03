@@ -114,46 +114,118 @@ async def send_level_up(user, level, xp, max_xp):
 
     W, H = 900, 300
 
-    # фон
-    img = Image.new("RGB", (W, H), (15, 15, 25))
-    draw = ImageDraw.Draw(img)
+    # ================= BACKGROUND =================
+    base = Image.new("RGBA", (W, H), (10, 12, 20, 255))
+    draw = ImageDraw.Draw(base)
 
+    # gradient background
     for y in range(H):
-        draw.line([(0, y), (W, y)], fill=(18, 18 + y // 20, 40 + y // 10))
+        r = int(10 + y * 0.05)
+        g = int(12 + y * 0.06)
+        b = int(25 + y * 0.1)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
 
-    # шрифты
-    font_big = load_font(46)
-    font_name = load_font(38)
-    font_mid = load_font(24)
-    font_small = load_font(18)
+    # soft glow spot
+    glow = Image.new("RGBA", (300, 300), (0, 220, 255, 0))
+    gdraw = ImageDraw.Draw(glow)
+    for i in range(150):
+        gdraw.ellipse(
+            (150-i, 150-i, 150+i, 150+i),
+            fill=(0, 200, 255, max(0, 8-i//2))
+        )
+    base.paste(glow, (520, -80), glow)
 
-    # аватар
+    # ================= CARD =================
+    card = Image.new("RGBA", (820, 220), (25, 28, 45, 220))
+    cdraw = ImageDraw.Draw(card)
+
+    # glass effect border
+    cdraw.rounded_rectangle(
+        (0, 0, 820, 220),
+        radius=28,
+        outline=(0, 200, 255),
+        width=2,
+        fill=(25, 28, 45, 200)
+    )
+
+    # ================= FONTS =================
+    def font(size):
+        try:
+            return ImageFont.truetype("arial.ttf", size)
+        except:
+            return ImageFont.load_default()
+
+    f_title = font(34)
+    f_name = font(28)
+    f_small = font(18)
+
+    # ================= AVATAR =================
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     r = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(r.content)).convert("RGBA")
-    avatar = avatar.resize((180, 180))
+    avatar = avatar.resize((150, 150))
 
-    mask = Image.new("L", (180, 180), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, 180, 180), fill=255)
+    mask = Image.new("L", (150, 150), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, 150, 150), fill=255)
 
-    avatar_bg = Image.new("RGBA", (180, 180))
-    avatar_bg.paste(avatar, (0, 0), mask)
+    avatar_img = Image.new("RGBA", (150, 150))
+    avatar_img.paste(avatar, (0, 0), mask)
 
-    border = Image.new("RGBA", (190, 190), (0, 0, 0, 0))
-    bd = ImageDraw.Draw(border)
-    bd.ellipse((0, 0, 190, 190), outline=(0, 220, 255), width=4)
-    border.paste(avatar_bg, (5, 5), avatar_bg)
+    # glow ring
+    ring = Image.new("RGBA", (170, 170), (0, 0, 0, 0))
+    rdraw = ImageDraw.Draw(ring)
+    rdraw.ellipse((0, 0, 170, 170), outline=(0, 220, 255), width=4)
 
-    img.paste(border, (40, 60), border)
+    # ================= TEXT =================
+    cdraw.text((200, 25), "LEVEL UP", font=f_title, fill=(255, 255, 255))
+    cdraw.text((200, 75), user.display_name, font=f_name, fill=(230, 230, 230))
 
-    # текст
-    draw.text((260, 40), "LEVEL UP", font=font_big, fill=(255, 255, 255))
-    draw.text((260, 100), user.display_name, font=font_name, fill=(255, 255, 255))
+    cdraw.text((200, 115), f"Level {level}", font=f_small, fill=(0, 220, 255))
+    cdraw.text((290, 115), get_rank(level), font=f_small, fill=(255, 200, 0))
+    cdraw.text((420, 115), get_title(level), font=f_small, fill=(180, 180, 180))
 
-    draw.text((260, 155), f"Level: {level}", font=font_mid, fill=(0, 220, 255))
-    draw.text((260, 190), get_rank(level), font=font_mid, fill=(255, 200, 0))
-    draw.text((260, 225), get_title(level), font=font_mid, fill=(200, 200, 200))
+    # ================= XP BAR =================
+    bar_x, bar_y = 200, 160
+    bar_w, bar_h = 560, 18
 
+    progress = xp / max_xp if max_xp else 0
+
+    # background
+    cdraw.rounded_rectangle(
+        (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
+        radius=10,
+        fill=(40, 45, 70)
+    )
+
+    # fill (premium cyan)
+    fill_w = int(bar_w * progress)
+    cdraw.rounded_rectangle(
+        (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h),
+        radius=10,
+        fill=(0, 220, 255)
+    )
+
+    cdraw.text(
+        (bar_x, bar_y - 22),
+        f"{xp} / {max_xp} XP",
+        font=f_small,
+        fill=(180, 180, 180)
+    )
+
+    # ================= COMPOSE =================
+    base.paste(card, (40, 40), card)
+    base.paste(ring, (70, 70), ring)
+    base.paste(avatar_img, (80, 80), avatar_img)
+
+    # ================= OUTPUT =================
+    buffer = io.BytesIO()
+    base.save(buffer, "PNG")
+    buffer.seek(0)
+
+    await channel.send(
+        content=f"✨ {user.mention} leveled up!",
+        file=discord.File(buffer, "level.png")
+    )
     # XP bar
     progress = xp / max_xp if max_xp else 0
 
