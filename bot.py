@@ -25,20 +25,28 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 voice_activity = {}
 db_pool = None
 
-# ---------------- DATABASE ----------------
+# ---------------- STARTUP SAFETY ----------------
 
-async def init_db():
+@bot.event
+async def on_ready():
     global db_pool
-    db_pool = await asyncpg.create_pool(DATABASE_URL)
+    print("BOT ONLINE:", bot.user)
 
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            xp INT DEFAULT 0,
-            level INT DEFAULT 1
-        )
-        """)
+    try:
+        db_pool = await asyncpg.create_pool(DATABASE_URL)
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                xp INT DEFAULT 0,
+                level INT DEFAULT 1
+            )
+            """)
+        print("DB READY")
+    except Exception as e:
+        print("DB INIT ERROR:", e)
+
+# ---------------- DATABASE ----------------
 
 async def get_user(user_id: int):
     try:
@@ -58,7 +66,7 @@ async def get_user(user_id: int):
             return {"xp": row["xp"], "level": row["level"]}
 
     except Exception as e:
-        print("DB GET ERROR:", e)
+        print("GET_USER ERROR:", e)
         return {"xp": 0, "level": 1}
 
 async def update_user(user_id: int, xp: int, level: int):
@@ -71,7 +79,7 @@ async def update_user(user_id: int, xp: int, level: int):
                 DO UPDATE SET xp = $2, level = $3
             """, user_id, xp, level)
     except Exception as e:
-        print("DB UPDATE ERROR:", e)
+        print("UPDATE_USER ERROR:", e)
 
 # ---------------- XP SYSTEM ----------------
 
@@ -98,7 +106,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- SAFE CARD ----------------
+# ---------------- CARD (SAFE) ----------------
 
 async def send_level_up(user, level):
     try:
@@ -178,38 +186,14 @@ async def on_message(message):
         return
 
     await handle_xp(message.author)
-
     await bot.process_commands(message)
 
+# ---------------- ERROR DEBUG (ВАЖНО) ----------------
+
 @bot.event
-async def on_voice_state_update(member, before, after):
-    if member.bot:
-        return
-
-    uid = member.id
-
-    try:
-        if after.channel and not before.channel:
-            voice_activity[uid] = asyncio.get_event_loop().time()
-
-        elif before.channel and not after.channel:
-            start = voice_activity.pop(uid, None)
-            if not start:
-                return
-
-            duration = asyncio.get_event_loop().time() - start
-
-            data = await get_user(uid)
-            data["xp"] += int(duration // 10)
-
-            while data["xp"] >= xp_needed(data["level"]):
-                data["xp"] -= xp_needed(data["level"])
-                data["level"] += 1
-
-            await update_user(uid, data["xp"], data["level"])
-
-    except Exception as e:
-        print("VOICE ERROR:", e)
+async def on_command_error(ctx, error):
+    print("COMMAND ERROR:", repr(error))
+    await ctx.send(f"❌ Error: {error}")
 
 # ---------------- COMMANDS ----------------
 
@@ -220,6 +204,7 @@ async def ping(ctx):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
+
     data = await get_user(member.id)
 
     await ctx.send(
@@ -235,11 +220,6 @@ async def testcard(ctx, member: discord.Member = None, level: int = 1):
     member = member or ctx.author
     await send_level_up(member, level)
 
-# ---------------- START ----------------
-
-@bot.event
-async def on_ready():
-    await init_db()
-    print("BOT ONLINE:", bot.user)
+# ---------------- RUN ----------------
 
 bot.run(os.getenv("TOKEN"))
