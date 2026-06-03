@@ -25,7 +25,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 voice_activity = {}
 db_pool = None
 
-# ---------------- STARTUP SAFETY ----------------
+# ---------------- START ----------------
 
 @bot.event
 async def on_ready():
@@ -34,6 +34,7 @@ async def on_ready():
 
     try:
         db_pool = await asyncpg.create_pool(DATABASE_URL)
+
         async with db_pool.acquire() as conn:
             await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -42,9 +43,11 @@ async def on_ready():
                 level INT DEFAULT 1
             )
             """)
+
         print("DB READY")
+
     except Exception as e:
-        print("DB INIT ERROR:", e)
+        print("DB ERROR:", e)
 
 # ---------------- DATABASE ----------------
 
@@ -66,7 +69,7 @@ async def get_user(user_id: int):
             return {"xp": row["xp"], "level": row["level"]}
 
     except Exception as e:
-        print("GET_USER ERROR:", e)
+        print("GET USER ERROR:", e)
         return {"xp": 0, "level": 1}
 
 async def update_user(user_id: int, xp: int, level: int):
@@ -78,10 +81,11 @@ async def update_user(user_id: int, xp: int, level: int):
                 ON CONFLICT (user_id)
                 DO UPDATE SET xp = $2, level = $3
             """, user_id, xp, level)
-    except Exception as e:
-        print("UPDATE_USER ERROR:", e)
 
-# ---------------- XP SYSTEM ----------------
+    except Exception as e:
+        print("UPDATE USER ERROR:", e)
+
+# ---------------- XP ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -106,7 +110,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- CARD (SAFE) ----------------
+# ---------------- CARD ----------------
 
 async def send_level_up(user, level):
     try:
@@ -146,7 +150,6 @@ async def send_level_up(user, level):
 
         draw.text((250, 35), "LEVEL UP", fill="white", font=font_big)
         draw.text((250, 100), user.display_name, fill="white", font=font_name)
-
         draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
         draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
         draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
@@ -178,8 +181,6 @@ async def handle_xp(user):
     except Exception as e:
         print("XP ERROR:", e)
 
-# ---------------- EVENTS ----------------
-
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -188,7 +189,7 @@ async def on_message(message):
     await handle_xp(message.author)
     await bot.process_commands(message)
 
-# ---------------- ERROR DEBUG (ВАЖНО) ----------------
+# ---------------- ERROR ----------------
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -204,7 +205,6 @@ async def ping(ctx):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-
     data = await get_user(member.id)
 
     await ctx.send(
@@ -219,6 +219,119 @@ async def rank(ctx, member: discord.Member = None):
 async def testcard(ctx, member: discord.Member = None, level: int = 1):
     member = member or ctx.author
     await send_level_up(member, level)
+
+# ---------------- TTT ----------------
+
+WIN = [
+    (0,1,2),(3,4,5),(6,7,8),
+    (0,3,6),(1,4,7),(2,5,8),
+    (0,4,8),(2,4,6)
+]
+
+def check(board):
+    for a, b, c in WIN:
+        if board[a] == board[b] == board[c] and board[a] != " ":
+            return board[a]
+    return None
+
+
+class TTT(discord.ui.View):
+    def __init__(self, p1, p2):
+        super().__init__(timeout=None)
+
+        self.players = [p1, p2]
+        self.board = [" "] * 9
+        self.turn = 0
+
+        self.build()
+
+    def build(self):
+        self.clear_items()
+
+        for i in range(9):
+            mark = self.board[i]
+
+            btn = discord.ui.Button(
+                label=mark if mark != " " else "⬜",
+                style=discord.ButtonStyle.secondary,
+                row=i // 3,
+                disabled=(mark != " ")
+            )
+
+            async def callback(interaction, index=i):
+
+                if interaction.user != self.players[self.turn]:
+                    return await interaction.response.send_message("⛔ не твой ход", ephemeral=True)
+
+                if self.board[index] != " ":
+                    return await interaction.response.send_message("⛔ занято", ephemeral=True)
+
+                self.board[index] = "❌" if self.turn == 0 else "⭕"
+
+                winner = check(self.board)
+
+                if winner:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content=f"🏆 Победитель: {interaction.user.mention}",
+                        view=self
+                    )
+
+                if " " not in self.board:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content="🤝 Ничья",
+                        view=self
+                    )
+
+                self.turn = 1 - self.turn
+
+                new_view = TTT(self.players[0], self.players[1])
+                new_view.board = self.board
+                new_view.turn = self.turn
+                new_view.build()
+
+                await interaction.response.edit_message(
+                    content=f"🎮 Ход: {self.players[self.turn].mention}",
+                    view=new_view
+                )
+
+            btn.callback = callback
+            self.add_item(btn)
+
+
+@bot.command()
+async def ttt(ctx, opponent: discord.Member):
+    view = TTT(ctx.author, opponent)
+    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=view)
+
+# ---------------- FORTUNA ----------------
+
+@bot.command(name="fortuna")
+async def fortuna(ctx):
+    choices = []
+
+    await ctx.send("🔮 Вводи варианты. Напиши 'готово' чтобы завершить.")
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    while True:
+        msg = await bot.wait_for("message", check=check)
+
+        if msg.content.lower() == "готово":
+            break
+
+        choices.append(msg.content)
+
+    if not choices:
+        return await ctx.send("❌ нет вариантов")
+
+    await ctx.send(f"🔮 Выбор...\n✨ {random.choice(choices)}")
 
 # ---------------- RUN ----------------
 
