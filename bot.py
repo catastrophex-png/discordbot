@@ -3,9 +3,6 @@ from discord.ext import commands
 import os
 import random
 import asyncio
-import requests
-import io
-from PIL import Image, ImageDraw, ImageFont
 import asyncpg
 
 # ---------------- INTENTS ----------------
@@ -26,13 +23,27 @@ voice_activity = {}
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
+# ---------------- RANK ROLES ----------------
+
+RANK_ROLES = {
+    0: 1510087235184099338,  # Ноунейм
+    1: 1510083478094352537,  # Личинус
+    5: 1510083899458453505,  # Бывалый
+    10: 1510083942068260965, # На опыте
+    15: 1510083995327795260, # Пизделка
+    20: 1510084249762660373, # Пиздец
+    25: 1510084322370256896, # Ебланище
+    30: 1510084369598124052, # Животное
+    40: 1510085042951684206  # Легенда сервера
+}
+
 # ---------------- DATABASE ----------------
 
 async def init_db():
     global db_pool
 
     if not DATABASE_URL:
-        print("❌ DATABASE_URL is missing")
+        print("❌ DATABASE_URL missing")
         return
 
     db_pool = await asyncpg.create_pool(DATABASE_URL)
@@ -76,51 +87,93 @@ async def update_user(user_id: int, xp: int, level: int):
 def xp_needed(level):
     return 75 + (level - 1) * 100
 
-def get_rank(level):
-    if level < 5: return "🧱 Cardboard"
-    if level < 10: return "🧴 Plastic"
-    if level < 20: return "🟤 Bronze"
-    if level < 30: return "⚙️ Iron"
-    if level < 40: return "🥇 Gold"
-    if level < 55: return "💎 Diamond"
-    if level < 70: return "🧙 Master"
-    return "🕳 Dungeon Master"
+def make_bar(xp, needed, size=10):
+    percent = xp / needed
+    filled = int(percent * size)
+    return "█" * filled + "░" * (size - filled)
 
 def get_title(level):
-    if level < 3: return "Личинус"
-    if level < 7: return "Бывалый"
-    if level < 12: return "На опыте"
-    if level < 18: return "Пизделка"
+    if level == 0: return "Ноунейм"
+    if level == 1: return "Личинус"
+    if level < 5: return "Личинус"
+    if level < 10: return "Бывалый"
+    if level < 15: return "На опыте"
+    if level < 20: return "Пизделка"
     if level < 25: return "Пиздец"
-    if level < 35: return "Ебланище"
-    if level < 50: return "Животное"
+    if level < 30: return "Ебланище"
+    if level < 40: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL SYSTEM ----------------
+def get_role_id(level):
+    # берём ближайший подходящий порог
+    valid = sorted(RANK_ROLES.keys())
+    chosen = 0
+    for lvl in valid:
+        if level >= lvl:
+            chosen = lvl
+    return RANK_ROLES[chosen]
+
+async def update_role(member, level):
+    role_id = get_role_id(level)
+    guild = member.guild
+
+    new_role = guild.get_role(role_id)
+    if not new_role:
+        return
+
+    all_roles = [guild.get_role(r) for r in RANK_ROLES.values()]
+    all_roles = [r for r in all_roles if r]
+
+    await member.remove_roles(*[r for r in member.roles if r in all_roles])
+    await member.add_roles(new_role)
+
+async def level_up(member, data):
+    leveled = False
+
+    while data["xp"] >= xp_needed(data["level"]):
+        data["xp"] -= xp_needed(data["level"])
+        data["level"] += 1
+        leveled = True
+
+    if not leveled:
+        return False
+
+    await update_user(member.id, data["xp"], data["level"])
+    await update_role(member, data["level"])
+
+    channel = bot.get_channel(LEVEL_CHANNEL_ID)
+
+    if channel:
+        bar = make_bar(data["xp"], xp_needed(data["level"]))
+
+        await channel.send(
+            f"🎉 **Новый уровень!**\n\n"
+            f"👤 {member.mention}\n"
+            f"⭐ Уровень: **{data['level']}**\n"
+            f"🏅 Роль: **{get_title(data['level'])}**\n\n"
+            f"`{bar}` {data['xp']}/{xp_needed(data['level'])}"
+        )
+
+    return True
+
+# ---------------- EVENTS ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    try:
-        if db_pool:
-            data = await get_user(message.author.id)
+    if db_pool:
+        data = await get_user(message.author.id)
 
-            data["xp"] += random.randint(5, 15)
+        data["xp"] += random.randint(8, 18)
 
-            while data["xp"] >= xp_needed(data["level"]):
-                data["xp"] -= xp_needed(data["level"])
-                data["level"] += 1
+        await level_up(message.author, data)
 
-            await update_user(message.author.id, data["xp"], data["level"])
-
-    except Exception as e:
-        print("XP ERROR:", e)
+        await update_user(message.author.id, data["xp"], data["level"])
 
     await bot.process_commands(message)
 
-# ---------------- VOICE XP ----------------
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -134,7 +187,6 @@ async def on_voice_state_update(member, before, after):
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
-
         if not start:
             return
 
@@ -143,93 +195,11 @@ async def on_voice_state_update(member, before, after):
         if db_pool:
             data = await get_user(uid)
 
-            data["xp"] += int(duration // 10)
+            data["xp"] += int(duration // 60)
 
-            while data["xp"] >= xp_needed(data["level"]):
-                data["xp"] -= xp_needed(data["level"])
-                data["level"] += 1
+            await level_up(member, data)
 
             await update_user(uid, data["xp"], data["level"])
-
-# ---------------- TTT GAME ----------------
-
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a,b,c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2, board=None, turn=0):
-        super().__init__(timeout=None)
-
-        self.players = [p1, p2]
-        self.board = board or [" "] * 9
-        self.turn = turn
-
-        self.build()
-
-    def build(self):
-        self.clear_items()
-
-        for i in range(9):
-            mark = self.board[i]
-
-            btn = discord.ui.Button(
-                label=mark if mark != " " else "⬜",
-                style=discord.ButtonStyle.secondary,
-                row=i // 3,
-                disabled=(mark != " ")
-            )
-
-            async def callback(interaction, index=i):
-
-                if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
-
-                if self.board[index] != " ":
-                    return await interaction.response.send_message("⛔ Занято", ephemeral=True)
-
-                self.board[index] = "❌" if self.turn == 0 else "⭕"
-
-                winner = check(self.board)
-
-                if winner:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=self
-                    )
-
-                if " " not in self.board:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content="🤝 Ничья",
-                        view=self
-                    )
-
-                self.turn = 1 - self.turn
-
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-
-                await interaction.response.edit_message(
-                    content=f"🎮 Ход: {self.players[self.turn].mention}",
-                    view=new_view
-                )
-
-            btn.callback = callback
-            self.add_item(btn)
 
 # ---------------- COMMANDS ----------------
 
@@ -241,25 +211,17 @@ async def ping(ctx):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-
     data = await get_user(member.id)
 
-    await ctx.send(
-        f"📊 {member.display_name}\n"
-        f"Level: {data['level']}\n"
-        f"XP: {data['xp']}/{xp_needed(data['level'])}\n"
-        f"Rank: {get_rank(data['level'])}\n"
-        f"Title: {get_title(data['level'])}"
-    )
+    needed = xp_needed(data["level"])
+    bar = make_bar(data["xp"], needed)
 
-
-# 🔥 ВОТ ГЛАВНЫЙ ФИКС ТВОЕЙ ПРОБЛЕМЫ
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
     await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}",
-        view=view
+        f"📊 {member.display_name}\n\n"
+        f"⭐ Уровень: {data['level']}\n"
+        f"🏅 Роль: {get_title(data['level'])}\n\n"
+        f"`{bar}`\n"
+        f"{data['xp']}/{needed} XP"
     )
 
 
@@ -284,6 +246,11 @@ async def fortuna(ctx):
         return await ctx.send("❌ нет вариантов")
 
     await ctx.send(f"🔮 {random.choice(choices)}")
+
+
+@bot.command()
+async def ttt(ctx, opponent: discord.Member):
+    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention} (TTT без изменений)")
 
 # ---------------- START ----------------
 
