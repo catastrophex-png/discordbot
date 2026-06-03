@@ -2,11 +2,11 @@ import discord
 from discord.ext import commands
 import os
 import random
-import json
 import asyncio
 import requests
 import io
 from PIL import Image, ImageDraw, ImageFont
+import asyncpg
 
 # ---------------- INTENTS ----------------
 
@@ -20,24 +20,53 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
-DATA_FILE = "data.json"
 
 voice_activity = {}
 
-# ---------------- DATA ----------------
+DATABASE_URL = os.getenv("DATABASE_URL")
+db_pool = None
 
-def load_data():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+# ---------------- DATABASE ----------------
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+async def init_db():
+    global db_pool
+    db_pool = await asyncpg.create_pool(DATABASE_URL)
 
-# ---------------- XP ----------------
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            xp INT DEFAULT 0,
+            level INT DEFAULT 1
+        )
+        """)
+
+async def get_user(user_id: int):
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT xp, level FROM users WHERE user_id=$1",
+            user_id
+        )
+
+        if not row:
+            await conn.execute(
+                "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
+                user_id
+            )
+            return {"xp": 0, "level": 1}
+
+        return {"xp": row["xp"], "level": row["level"]}
+
+async def update_user(user_id: int, xp: int, level: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO users (user_id, xp, level)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id)
+            DO UPDATE SET xp = $2, level = $3
+        """, user_id, xp, level)
+
+# ---------------- XP SYSTEM ----------------
 
 def xp_needed(level):
     return 75 + (level - 1) * 100
@@ -115,20 +144,19 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    data = load_data()
-    uid = str(message.author.id)
+    user_id = message.author.id
 
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 1}
+    data = await get_user(user_id)
 
-    data[uid]["xp"] += random.randint(5, 15)
+    data["xp"] += random.randint(5, 15)
 
-    while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
-        data[uid]["xp"] -= xp_needed(data[uid]["level"])
-        data[uid]["level"] += 1
-        await send_level_up(message.author, data[uid]["level"])
+    while data["xp"] >= xp_needed(data["level"]):
+        data["xp"] -= xp_needed(data["level"])
+        data["level"] += 1
+        await send_level_up(message.author, data["level"])
 
-    save_data(data)
+    await update_user(user_id, data["xp"], data["level"])
+
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -138,7 +166,7 @@ async def on_voice_state_update(member, before, after):
     if member.bot:
         return
 
-    uid = str(member.id)
+    uid = member.id
 
     if after.channel and not before.channel:
         voice_activity[uid] = asyncio.get_event_loop().time()
@@ -151,20 +179,17 @@ async def on_voice_state_update(member, before, after):
 
         duration = asyncio.get_event_loop().time() - start
 
-        data = load_data()
+        data = await get_user(uid)
 
-        if uid not in data:
-            data[uid] = {"xp": 0, "level": 1}
+        data["xp"] += int(duration // 10)
 
-        data[uid]["xp"] += int(duration // 10)
+        while data["xp"] >= xp_needed(data["level"]):
+            data["xp"] -= xp_needed(data["level"])
+            data["level"] += 1
 
-        while data[uid]["xp"] >= xp_needed(data[uid]["level"]):
-            data[uid]["xp"] -= xp_needed(data[uid]["level"])
-            data[uid]["level"] += 1
+        await update_user(uid, data["xp"], data["level"])
 
-        save_data(data)
-
-# ---------------- TTT FIXED ----------------
+# ---------------- TTT ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -249,14 +274,11 @@ class TTT(discord.ui.View):
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
-    data = load_data()
-    uid = str(member.id)
 
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 1}
+    data = await get_user(member.id)
 
-    lvl = data[uid]["level"]
-    xp = data[uid]["xp"]
+    lvl = data["level"]
+    xp = data["xp"]
 
     await ctx.send(
         f"📊 {member.display_name}\n"
@@ -297,6 +319,7 @@ async def fortuna(ctx):
 
 @bot.event
 async def on_ready():
+    await init_db()
     print("BOT ONLINE:", bot.user)
 
 bot.run(os.getenv("TOKEN"))
