@@ -46,8 +46,6 @@ async def init_db():
         )
         """)
 
-# ---------------- USER DB ----------------
-
 async def get_user(user_id: int):
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -64,7 +62,6 @@ async def get_user(user_id: int):
 
         return {"xp": row["xp"], "level": row["level"]}
 
-
 async def update_user(user_id: int, xp: int, level: int):
     async with db_pool.acquire() as conn:
         await conn.execute("""
@@ -79,7 +76,6 @@ async def update_user(user_id: int, xp: int, level: int):
 def xp_needed(level):
     return 75 + (level - 1) * 100
 
-
 def get_rank(level):
     if level < 5: return "🧱 Cardboard"
     if level < 10: return "🧴 Plastic"
@@ -89,7 +85,6 @@ def get_rank(level):
     if level < 55: return "💎 Diamond"
     if level < 70: return "🧙 Master"
     return "🕳 Dungeon Master"
-
 
 def get_title(level):
     if level < 3: return "Личинус"
@@ -101,7 +96,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- XP EVENT ----------------
+# ---------------- LEVEL SYSTEM ----------------
 
 @bot.event
 async def on_message(message):
@@ -156,7 +151,92 @@ async def on_voice_state_update(member, before, after):
 
             await update_user(uid, data["xp"], data["level"])
 
+# ---------------- TTT GAME ----------------
+
+WIN = [
+    (0,1,2),(3,4,5),(6,7,8),
+    (0,3,6),(1,4,7),(2,5,8),
+    (0,4,8),(2,4,6)
+]
+
+def check(board):
+    for a,b,c in WIN:
+        if board[a] == board[b] == board[c] and board[a] != " ":
+            return board[a]
+    return None
+
+
+class TTT(discord.ui.View):
+    def __init__(self, p1, p2, board=None, turn=0):
+        super().__init__(timeout=None)
+
+        self.players = [p1, p2]
+        self.board = board or [" "] * 9
+        self.turn = turn
+
+        self.build()
+
+    def build(self):
+        self.clear_items()
+
+        for i in range(9):
+            mark = self.board[i]
+
+            btn = discord.ui.Button(
+                label=mark if mark != " " else "⬜",
+                style=discord.ButtonStyle.secondary,
+                row=i // 3,
+                disabled=(mark != " ")
+            )
+
+            async def callback(interaction, index=i):
+
+                if interaction.user != self.players[self.turn]:
+                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
+
+                if self.board[index] != " ":
+                    return await interaction.response.send_message("⛔ Занято", ephemeral=True)
+
+                self.board[index] = "❌" if self.turn == 0 else "⭕"
+
+                winner = check(self.board)
+
+                if winner:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content=f"🏆 Победитель: {interaction.user.mention}",
+                        view=self
+                    )
+
+                if " " not in self.board:
+                    for b in self.children:
+                        b.disabled = True
+
+                    return await interaction.response.edit_message(
+                        content="🤝 Ничья",
+                        view=self
+                    )
+
+                self.turn = 1 - self.turn
+
+                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
+
+                await interaction.response.edit_message(
+                    content=f"🎮 Ход: {self.players[self.turn].mention}",
+                    view=new_view
+                )
+
+            btn.callback = callback
+            self.add_item(btn)
+
 # ---------------- COMMANDS ----------------
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send("pong")
+
 
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
@@ -173,9 +253,14 @@ async def rank(ctx, member: discord.Member = None):
     )
 
 
+# 🔥 ВОТ ГЛАВНЫЙ ФИКС ТВОЕЙ ПРОБЛЕМЫ
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}\n(игра у тебя уже есть в коде — если хочешь, могу улучшить UI)")
+    view = TTT(ctx.author, opponent)
+    await ctx.send(
+        f"🎮 {ctx.author.mention} vs {opponent.mention}",
+        view=view
+    )
 
 
 @bot.command(name="фортуна")
@@ -200,7 +285,7 @@ async def fortuna(ctx):
 
     await ctx.send(f"🔮 {random.choice(choices)}")
 
-# ---------------- STARTUP FIX ----------------
+# ---------------- START ----------------
 
 @bot.event
 async def setup_hook():
@@ -209,7 +294,5 @@ async def setup_hook():
 @bot.event
 async def on_ready():
     print("BOT ONLINE:", bot.user)
-
-# ---------------- RUN ----------------
 
 bot.run(os.getenv("TOKEN"))
