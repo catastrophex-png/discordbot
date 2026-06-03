@@ -170,7 +170,7 @@ async def level_up(member, data):
 
     if channel:
         await channel.send(
-            f"🎉 Новый уровень!\n\n"
+            f"🎉 Новый уровень! Иди нахуй \n\n"
             f"👤 {member.mention}\n"
             f"⭐ Уровень: {data['level']}\n"
             f"🏅 Роль: {get_title(data['level'])}\n"
@@ -220,7 +220,7 @@ async def on_voice_state_update(member, before, after):
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
-# ---------------- TTT (ТВОЯ ИГРА ВОЗВРАЩЕНА) ----------------
+# ---------------- TTT ----------------
 
 WIN = [
     (0,1,2),(3,4,5),(6,7,8),
@@ -259,10 +259,10 @@ class TTT(discord.ui.View):
             async def callback(interaction, index=i):
 
                 if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
+                    return await interaction.response.send_message("⛔ Эй псина, не твой ход", ephemeral=True)
 
                 if self.board[index] != " ":
-                    return await interaction.response.send_message("⛔ Уже занято", ephemeral=True)
+                    return await interaction.response.send_message("⛔ Занято нахуй", ephemeral=True)
 
                 self.board[index] = "❌" if self.turn == 0 else "⭕"
 
@@ -333,7 +333,7 @@ async def rank(ctx, member: discord.Member = None):
 async def fortuna(ctx):
     choices = []
 
-    await ctx.send("🔮 Вводи варианты, напиши 'готово'")
+    await ctx.send("🔮 Вводи уже варианты, заебал. Потом напиши: готово")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
