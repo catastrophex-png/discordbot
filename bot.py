@@ -20,6 +20,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
+
 voice_activity = {}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -90,167 +91,81 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- UI HELPERS ----------------
+# ---------------- LEVEL CARD (UPDATED) ----------------
 
-def load_font(size):
-    try:
-        return ImageFont.truetype("arial.ttf", size)
-    except:
-        return ImageFont.load_default()
-
-def draw_bar(draw, x, y, w, h, progress, fill, bg):
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=bg)
-
-    fill_w = int(w * max(0, min(progress, 1)))
-    if fill_w > 0:
-        draw.rounded_rectangle([x, y, x + fill_w, y + h], radius=10, fill=fill)
-
-# ---------------- LEVEL CARD ----------------
-
-async def send_level_up(user, level, xp, max_xp):
+async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
     if not channel:
         return
 
-    W, H = 900, 300
-
-    # ================= BACKGROUND =================
-    base = Image.new("RGBA", (W, H), (10, 12, 20, 255))
-    draw = ImageDraw.Draw(base)
+    WIDTH, HEIGHT = 900, 300
+    img = Image.new("RGB", (WIDTH, HEIGHT), (18, 18, 28))
+    draw = ImageDraw.Draw(img)
 
     # gradient background
-    for y in range(H):
-        r = int(10 + y * 0.05)
-        g = int(12 + y * 0.06)
-        b = int(25 + y * 0.1)
-        draw.line([(0, y), (W, y)], fill=(r, g, b))
+    for y in range(HEIGHT):
+        r = 20
+        g = int(25 + (y / HEIGHT) * 40)
+        b = int(45 + (y / HEIGHT) * 80)
+        draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
-    # soft glow spot
-    glow = Image.new("RGBA", (300, 300), (0, 220, 255, 0))
-    gdraw = ImageDraw.Draw(glow)
-    for i in range(150):
-        gdraw.ellipse(
-            (150-i, 150-i, 150+i, 150+i),
-            fill=(0, 200, 255, max(0, 8-i//2))
-        )
-    base.paste(glow, (520, -80), glow)
+    # fonts (safe for Railway)
+    try:
+        font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
+        font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
+        font_mid = ImageFont.truetype("DejaVuSans.ttf", 26)
+    except:
+        font_big = font_name = font_mid = ImageFont.load_default()
 
-    # ================= CARD =================
-    card = Image.new("RGBA", (820, 220), (25, 28, 45, 220))
-    cdraw = ImageDraw.Draw(card)
-
-    # glass effect border
-    cdraw.rounded_rectangle(
-        (0, 0, 820, 220),
-        radius=28,
-        outline=(0, 200, 255),
-        width=2,
-        fill=(25, 28, 45, 200)
-    )
-
-    # ================= FONTS =================
-    def font(size):
-        try:
-            return ImageFont.truetype("arial.ttf", size)
-        except:
-            return ImageFont.load_default()
-
-    f_title = font(34)
-    f_name = font(28)
-    f_small = font(18)
-
-    # ================= AVATAR =================
+    # avatar
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     r = requests.get(avatar_url)
-    avatar = Image.open(io.BytesIO(r.content)).convert("RGBA")
-    avatar = avatar.resize((150, 150))
+    avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
+    avatar = avatar.resize((170, 170))
 
-    mask = Image.new("L", (150, 150), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, 150, 150), fill=255)
+    mask = Image.new("L", (170, 170), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, 170, 170), fill=255)
 
-    avatar_img = Image.new("RGBA", (150, 150))
-    avatar_img.paste(avatar, (0, 0), mask)
+    border = Image.new("L", (180, 180), 0)
+    ImageDraw.Draw(border).ellipse((0, 0, 180, 180), fill=255)
 
-    # glow ring
-    ring = Image.new("RGBA", (170, 170), (0, 0, 0, 0))
-    rdraw = ImageDraw.Draw(ring)
-    rdraw.ellipse((0, 0, 170, 170), outline=(0, 220, 255), width=4)
+    img.paste((40, 40, 60), (45, 65), border)
+    img.paste(avatar, (50, 70), mask)
 
-    # ================= TEXT =================
-    cdraw.text((200, 25), "LEVEL UP", font=f_title, fill=(255, 255, 255))
-    cdraw.text((200, 75), user.display_name, font=f_name, fill=(230, 230, 230))
+    # text
+    draw.text((250, 35), "LEVEL UP", fill=(255, 255, 255), font=font_big)
+    draw.text((250, 100), user.display_name, fill=(230, 230, 230), font=font_name)
 
-    cdraw.text((200, 115), f"Level {level}", font=f_small, fill=(0, 220, 255))
-    cdraw.text((290, 115), get_rank(level), font=f_small, fill=(255, 200, 0))
-    cdraw.text((420, 115), get_title(level), font=f_small, fill=(180, 180, 180))
+    draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
+    draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
+    draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
 
-    # ================= XP BAR =================
-    bar_x, bar_y = 200, 160
-    bar_w, bar_h = 560, 18
-
-    progress = xp / max_xp if max_xp else 0
-
-    # background
-    cdraw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
-        radius=10,
-        fill=(40, 45, 70)
-    )
-
-    # fill (premium cyan)
-    fill_w = int(bar_w * progress)
-    cdraw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h),
-        radius=10,
-        fill=(0, 220, 255)
-    )
-
-    cdraw.text(
-        (bar_x, bar_y - 22),
-        f"{xp} / {max_xp} XP",
-        font=f_small,
-        fill=(180, 180, 180)
-    )
-
-    # ================= COMPOSE =================
-    base.paste(card, (40, 40), card)
-    base.paste(ring, (70, 70), ring)
-    base.paste(avatar_img, (80, 80), avatar_img)
-
-    # ================= OUTPUT =================
-    buffer = io.BytesIO()
-    base.save(buffer, "PNG")
-    buffer.seek(0)
-
-    await channel.send(
-        content=f"✨ {user.mention} leveled up!",
-        file=discord.File(buffer, "level.png")
-    )
     # XP bar
-    progress = xp / max_xp if max_xp else 0
+    bar_x, bar_y = 250, 265
+    bar_w, bar_h = 500, 18
 
-    draw_bar(
-        draw,
-        260,
-        265,
-        580,
-        20,
-        progress,
-        fill=(0, 220, 255),
-        bg=(40, 40, 60)
+    draw.rounded_rectangle(
+        (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
+        radius=8,
+        fill=(40, 40, 60)
     )
 
-    draw.text((260, 240), f"{xp}/{max_xp} XP", font=font_small, fill=(180, 180, 180))
+    fill_w = int(bar_w * 0.6)
+    draw.rounded_rectangle(
+        (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h),
+        radius=8,
+        fill=(80, 180, 255)
+    )
 
-    # отправка
-    buffer = io.BytesIO()
-    img.save(buffer, "PNG")
-    buffer.seek(0)
+    path = f"lvl_{user.id}.png"
+    img.save(path)
 
     await channel.send(
-        content=f"🎉 {user.mention} level up!",
-        file=discord.File(buffer, "level.png")
+        content=f"🎉 {user.mention} LEVEL UP!",
+        file=discord.File(path)
     )
+
+    os.remove(path)
 
 # ---------------- MESSAGE XP ----------------
 
@@ -267,16 +182,9 @@ async def on_message(message):
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
         data["level"] += 1
-
-        await send_level_up(
-            message.author,
-            data["level"],
-            data["xp"],
-            xp_needed(data["level"])
-        )
+        await send_level_up(message.author, data["level"])
 
     await update_user(user_id, data["xp"], data["level"])
-
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -293,6 +201,7 @@ async def on_voice_state_update(member, before, after):
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
+
         if not start:
             return
 
@@ -307,85 +216,6 @@ async def on_voice_state_update(member, before, after):
 
         await update_user(uid, data["xp"], data["level"])
 
-# ---------------- TTT ----------------
-
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a, b, c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2, board=None, turn=0):
-        super().__init__(timeout=None)
-
-        self.players = [p1, p2]
-        self.board = board or [" "] * 9
-        self.turn = turn
-
-        self.build()
-
-    def build(self):
-        self.clear_items()
-
-        for i in range(9):
-            mark = self.board[i]
-
-            btn = discord.ui.Button(
-                label=mark if mark != " " else "⬜",
-                style=discord.ButtonStyle.secondary,
-                row=i // 3,
-                disabled=(mark != " ")
-            )
-
-            async def callback(interaction, index=i):
-
-                if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("⛔ Не твой ход", ephemeral=True)
-
-                if self.board[index] != " ":
-                    return await interaction.response.send_message("⛔ Занято", ephemeral=True)
-
-                self.board[index] = "❌" if self.turn == 0 else "⭕"
-
-                winner = check(self.board)
-
-                if winner:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content=f"🏆 Победитель: {interaction.user.mention}",
-                        view=self
-                    )
-
-                if " " not in self.board:
-                    for b in self.children:
-                        b.disabled = True
-
-                    return await interaction.response.edit_message(
-                        content="🤝 Ничья",
-                        view=self
-                    )
-
-                self.turn = 1 - self.turn
-                new_view = TTT(self.players[0], self.players[1], self.board, self.turn)
-
-                await interaction.response.edit_message(
-                    content=f"🎮 Ход: {self.players[self.turn].mention}",
-                    view=new_view
-                )
-
-            btn.callback = callback
-            self.add_item(btn)
-
 # ---------------- COMMANDS ----------------
 
 @bot.command()
@@ -393,41 +223,13 @@ async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
     data = await get_user(member.id)
 
-    lvl = data["level"]
-    xp = data["xp"]
-
     await ctx.send(
         f"📊 {member.display_name}\n"
-        f"Level: {lvl}\n"
-        f"XP: {xp}/{xp_needed(lvl)}\n"
-        f"Rank: {get_rank(lvl)}\n"
-        f"Title: {get_title(lvl)}"
+        f"Level: {data['level']}\n"
+        f"XP: {data['xp']}/{xp_needed(data['level'])}\n"
+        f"Rank: {get_rank(data['level'])}\n"
+        f"Title: {get_title(data['level'])}"
     )
-
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    view = TTT(ctx.author, opponent)
-    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=view)
-
-@bot.command(name="фортуна")
-async def fortuna(ctx):
-    choices = []
-
-    await ctx.send("🔮 Вводи варианты. Напиши 'готово' чтобы завершить.")
-
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    while True:
-        msg = await bot.wait_for("message", check=check)
-        if msg.content.lower() == "готово":
-            break
-        choices.append(msg.content)
-
-    if not choices:
-        return await ctx.send("❌ нет вариантов")
-
-    await ctx.send(f"🔮 Выбор...\n✨ {random.choice(choices)}")
 
 # ---------------- START ----------------
 
