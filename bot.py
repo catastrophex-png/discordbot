@@ -17,12 +17,12 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- SETTINGS ----------------
+# ---------------- CONFIG ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
-voice_activity = {}
-
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+voice_activity = {}
 db_pool = None
 
 # ---------------- DATABASE ----------------
@@ -41,29 +41,37 @@ async def init_db():
         """)
 
 async def get_user(user_id: int):
-    async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT xp, level FROM users WHERE user_id=$1",
-            user_id
-        )
-
-        if not row:
-            await conn.execute(
-                "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT xp, level FROM users WHERE user_id=$1",
                 user_id
             )
-            return {"xp": 0, "level": 1}
 
-        return {"xp": row["xp"], "level": row["level"]}
+            if not row:
+                await conn.execute(
+                    "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
+                    user_id
+                )
+                return {"xp": 0, "level": 1}
+
+            return {"xp": row["xp"], "level": row["level"]}
+
+    except Exception as e:
+        print("DB GET ERROR:", e)
+        return {"xp": 0, "level": 1}
 
 async def update_user(user_id: int, xp: int, level: int):
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO users (user_id, xp, level)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id)
-            DO UPDATE SET xp = $2, level = $3
-        """, user_id, xp, level)
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO users (user_id, xp, level)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id)
+                DO UPDATE SET xp = $2, level = $3
+            """, user_id, xp, level)
+    except Exception as e:
+        print("DB UPDATE ERROR:", e)
 
 # ---------------- XP SYSTEM ----------------
 
@@ -90,87 +98,88 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- CARD ----------------
+# ---------------- SAFE CARD ----------------
 
 async def send_level_up(user, level):
-    channel = bot.get_channel(LEVEL_CHANNEL_ID)
-    if not channel:
-        return
-
-    WIDTH, HEIGHT = 900, 300
-    img = Image.new("RGB", (WIDTH, HEIGHT), (18, 18, 28))
-    draw = ImageDraw.Draw(img)
-
-    # gradient
-    for y in range(HEIGHT):
-        g = int(25 + (y / HEIGHT) * 40)
-        b = int(45 + (y / HEIGHT) * 80)
-        draw.line([(0, y), (WIDTH, y)], fill=(20, g, b))
-
     try:
-        font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
-        font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
-        font_mid = ImageFont.truetype("DejaVuSans.ttf", 26)
-    except:
-        font_big = font_name = font_mid = ImageFont.load_default()
+        channel = bot.get_channel(LEVEL_CHANNEL_ID)
+        if not channel:
+            return
 
-    # avatar
-    avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
-    r = requests.get(avatar_url)
-    avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
-    avatar = avatar.resize((170, 170))
+        img = Image.new("RGB", (900, 300), (18, 18, 28))
+        draw = ImageDraw.Draw(img)
 
-    mask = Image.new("L", (170, 170), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, 170, 170), fill=255)
+        for y in range(300):
+            g = int(25 + (y / 300) * 40)
+            b = int(45 + (y / 300) * 80)
+            draw.line([(0, y), (900, y)], fill=(20, g, b))
 
-    border = Image.new("L", (180, 180), 0)
-    ImageDraw.Draw(border).ellipse((0, 0, 180, 180), fill=255)
+        try:
+            font_big = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
+            font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
+            font_mid = ImageFont.truetype("DejaVuSans.ttf", 26)
+        except:
+            font_big = font_name = font_mid = ImageFont.load_default()
 
-    img.paste((40, 40, 60), (45, 65), border)
-    img.paste(avatar, (50, 70), mask)
+        avatar_url = getattr(user.avatar, "url", None) or user.default_avatar.url
 
-    draw.text((250, 35), "LEVEL UP", fill="white", font=font_big)
-    draw.text((250, 100), user.display_name, fill="white", font=font_name)
+        try:
+            r = requests.get(avatar_url, timeout=5)
+            avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
+        except:
+            avatar = Image.new("RGB", (170, 170), (120, 120, 120))
 
-    draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
-    draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
-    draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
+        avatar = avatar.resize((170, 170))
 
-    path = f"lvl_{user.id}.png"
-    img.save(path)
+        mask = Image.new("L", (170, 170), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 170, 170), fill=255)
 
-    await channel.send(
-        content=f"🎉 {user.mention} LEVEL UP!",
-        file=discord.File(path)
-    )
+        img.paste(avatar, (50, 70), mask)
 
-    os.remove(path)
+        draw.text((250, 35), "LEVEL UP", fill="white", font=font_big)
+        draw.text((250, 100), user.display_name, fill="white", font=font_name)
 
-# ---------------- XP (SAFE VERSION) ----------------
+        draw.text((250, 150), f"Level {level}", fill=(120, 220, 255), font=font_mid)
+        draw.text((250, 185), get_rank(level), fill=(255, 200, 80), font=font_mid)
+        draw.text((250, 220), get_title(level), fill=(200, 140, 255), font=font_mid)
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
+        path = f"lvl_{user.id}.png"
+        img.save(path)
 
+        await channel.send(file=discord.File(path))
+        os.remove(path)
+
+    except Exception as e:
+        print("CARD ERROR:", e)
+
+# ---------------- XP HANDLER ----------------
+
+async def handle_xp(user):
     try:
-        data = await get_user(message.author.id)
+        data = await get_user(user.id)
 
         data["xp"] += random.randint(5, 15)
 
         while data["xp"] >= xp_needed(data["level"]):
             data["xp"] -= xp_needed(data["level"])
             data["level"] += 1
-            await send_level_up(message.author, data["level"])
+            await send_level_up(user, data["level"])
 
-        await update_user(message.author.id, data["xp"], data["level"])
+        await update_user(user.id, data["xp"], data["level"])
 
     except Exception as e:
         print("XP ERROR:", e)
 
-    await bot.process_commands(message)
+# ---------------- EVENTS ----------------
 
-# ---------------- VOICE XP ----------------
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    await handle_xp(message.author)
+
+    await bot.process_commands(message)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
