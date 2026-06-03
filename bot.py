@@ -101,6 +101,7 @@ async def send_level_up(user, level):
     img = Image.new("RGB", (WIDTH, HEIGHT), (18, 18, 28))
     draw = ImageDraw.Draw(img)
 
+    # gradient
     for y in range(HEIGHT):
         g = int(25 + (y / HEIGHT) * 40)
         b = int(45 + (y / HEIGHT) * 80)
@@ -113,6 +114,7 @@ async def send_level_up(user, level):
     except:
         font_big = font_name = font_mid = ImageFont.load_default()
 
+    # avatar
     avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
     r = requests.get(avatar_url)
     avatar = Image.open(io.BytesIO(r.content)).convert("RGB")
@@ -144,26 +146,28 @@ async def send_level_up(user, level):
 
     os.remove(path)
 
-# ---------------- XP ON MESSAGE ----------------
+# ---------------- XP (SAFE VERSION) ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    user_id = message.author.id
-    data = await get_user(user_id)
+    try:
+        data = await get_user(message.author.id)
 
-    data["xp"] += random.randint(5, 15)
+        data["xp"] += random.randint(5, 15)
 
-    while data["xp"] >= xp_needed(data["level"]):
-        data["xp"] -= xp_needed(data["level"])
-        data["level"] += 1
-        await send_level_up(message.author, data["level"])
+        while data["xp"] >= xp_needed(data["level"]):
+            data["xp"] -= xp_needed(data["level"])
+            data["level"] += 1
+            await send_level_up(message.author, data["level"])
 
-    await update_user(user_id, data["xp"], data["level"])
+        await update_user(message.author.id, data["xp"], data["level"])
 
-    # ВАЖНО: команды работают только с этим
+    except Exception as e:
+        print("XP ERROR:", e)
+
     await bot.process_commands(message)
 
 # ---------------- VOICE XP ----------------
@@ -175,24 +179,28 @@ async def on_voice_state_update(member, before, after):
 
     uid = member.id
 
-    if after.channel and not before.channel:
-        voice_activity[uid] = asyncio.get_event_loop().time()
+    try:
+        if after.channel and not before.channel:
+            voice_activity[uid] = asyncio.get_event_loop().time()
 
-    elif before.channel and not after.channel:
-        start = voice_activity.pop(uid, None)
-        if not start:
-            return
+        elif before.channel and not after.channel:
+            start = voice_activity.pop(uid, None)
+            if not start:
+                return
 
-        duration = asyncio.get_event_loop().time() - start
+            duration = asyncio.get_event_loop().time() - start
 
-        data = await get_user(uid)
-        data["xp"] += int(duration // 10)
+            data = await get_user(uid)
+            data["xp"] += int(duration // 10)
 
-        while data["xp"] >= xp_needed(data["level"]):
-            data["xp"] -= xp_needed(data["level"])
-            data["level"] += 1
+            while data["xp"] >= xp_needed(data["level"]):
+                data["xp"] -= xp_needed(data["level"])
+                data["level"] += 1
 
-        await update_user(uid, data["xp"], data["level"])
+            await update_user(uid, data["xp"], data["level"])
+
+    except Exception as e:
+        print("VOICE ERROR:", e)
 
 # ---------------- COMMANDS ----------------
 
