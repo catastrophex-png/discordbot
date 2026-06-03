@@ -29,16 +29,28 @@ db_pool = None
 
 async def init_db():
     global db_pool
-    db_pool = await asyncpg.create_pool(DATABASE_URL)
 
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            xp INT DEFAULT 0,
-            level INT DEFAULT 1
-        )
-        """)
+    if not DATABASE_URL:
+        print("❌ DATABASE_URL is missing")
+        return
+
+    try:
+        db_pool = await asyncpg.create_pool(DATABASE_URL)
+
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                xp INT DEFAULT 0,
+                level INT DEFAULT 1
+            )
+            """)
+
+        print("✅ Database connected")
+
+    except Exception as e:
+        print("❌ DB ERROR:", e)
+
 
 async def get_user(user_id: int):
     async with db_pool.acquire() as conn:
@@ -56,6 +68,7 @@ async def get_user(user_id: int):
 
         return {"xp": row["xp"], "level": row["level"]}
 
+
 async def update_user(user_id: int, xp: int, level: int):
     async with db_pool.acquire() as conn:
         await conn.execute("""
@@ -70,6 +83,7 @@ async def update_user(user_id: int, xp: int, level: int):
 def xp_needed(level):
     return 75 + (level - 1) * 100
 
+
 def get_rank(level):
     if level < 5: return "🧱 Cardboard"
     if level < 10: return "🧴 Plastic"
@@ -79,6 +93,7 @@ def get_rank(level):
     if level < 55: return "💎 Diamond"
     if level < 70: return "🧙 Master"
     return "🕳 Dungeon Master"
+
 
 def get_title(level):
     if level < 3: return "Личинус"
@@ -90,7 +105,7 @@ def get_title(level):
     if level < 50: return "Животное"
     return "Легенда сервера"
 
-# ---------------- LEVEL CARD ----------------
+# ---------------- LEVEL UP IMAGE ----------------
 
 async def send_level_up(user, level):
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -136,28 +151,42 @@ async def send_level_up(user, level):
 
     os.remove(path)
 
-# ---------------- MESSAGE XP ----------------
+# ---------------- COMMANDS ----------------
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send("pong")
+    print("PING WORKS")
+
+# ---------------- XP SYSTEM ----------------
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    user_id = message.author.id
-    data = await get_user(user_id)
+    try:
+        user_id = message.author.id
 
-    data["xp"] += random.randint(5, 15)
+        if db_pool:
+            data = await get_user(user_id)
 
-    while data["xp"] >= xp_needed(data["level"]):
-        data["xp"] -= xp_needed(data["level"])
-        data["level"] += 1
+            data["xp"] += random.randint(5, 15)
 
-        await send_level_up(message.author, data["level"])
+            while data["xp"] >= xp_needed(data["level"]):
+                data["xp"] -= xp_needed(data["level"])
+                data["level"] += 1
 
-    await update_user(user_id, data["xp"], data["level"])
+                await send_level_up(message.author, data["level"])
+
+            await update_user(user_id, data["xp"], data["level"])
+
+    except Exception as e:
+        print("XP ERROR:", e)
+
     await bot.process_commands(message)
 
-# ---------------- VOICE XP (FIXED) ----------------
+# ---------------- VOICE XP ----------------
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -166,11 +195,9 @@ async def on_voice_state_update(member, before, after):
 
     uid = member.id
 
-    # joined voice
     if after.channel and not before.channel:
         voice_activity[uid] = asyncio.get_event_loop().time()
 
-    # left voice
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
         if not start:
@@ -178,17 +205,17 @@ async def on_voice_state_update(member, before, after):
 
         duration = asyncio.get_event_loop().time() - start
 
-        data = await get_user(uid)
-        data["xp"] += int(duration // 10)
+        if db_pool:
+            data = await get_user(uid)
+            data["xp"] += int(duration // 10)
 
-        while data["xp"] >= xp_needed(data["level"]):
-            data["xp"] -= xp_needed(data["level"])
-            data["level"] += 1
+            while data["xp"] >= xp_needed(data["level"]):
+                data["xp"] -= xp_needed(data["level"])
+                data["level"] += 1
 
-        # 🔥 FIX: САМОЕ ВАЖНОЕ — СОХРАНЕНИЕ В БД
-        await update_user(uid, data["xp"], data["level"])
+            await update_user(uid, data["xp"], data["level"])
 
-# ---------------- STARTUP FIX ----------------
+# ---------------- STARTUP ----------------
 
 @bot.event
 async def setup_hook():
