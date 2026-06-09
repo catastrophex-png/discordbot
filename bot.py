@@ -19,6 +19,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 LEVEL_CHANNEL_ID = 1510080367892238336
 voice_activity = {}
 
+AFK_CHANNEL_ID = 1510048410147749898
+voice_last_active = {}
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
@@ -247,24 +250,39 @@ async def on_voice_state_update(member, before, after):
         return
 
     uid = member.id
+    now = asyncio.get_event_loop().time()
 
+    # XP voice start/stop
     if after.channel and not before.channel:
-        voice_activity[uid] = asyncio.get_event_loop().time()
+        voice_activity[uid] = now
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
-        if not start:
-            return
-
-        duration = asyncio.get_event_loop().time() - start
-
-        if db_pool:
+        if start:
+            duration = now - start
             data = await get_user(uid)
             data["xp"] += int(duration // 60)
-
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
+    # AFK SYSTEM
+    if AFK_CHANNEL_ID and after.channel:
+        afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
+
+        for m in after.channel.members:
+            if m.bot:
+                continue
+
+            last = voice_last_active.get(m.id, now)
+            if now - last >= 900:
+                try:
+                    await m.move_to(afk_channel)
+                    voice_last_active[m.id] = now
+                except:
+                    pass
+
+    if after.channel:
+        voice_last_active[uid] = now
 # ---------------- TTT ----------------
 
 WIN = [
