@@ -22,6 +22,23 @@ voice_activity = {}
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
+# ---------------- ORACLE: БРОДЯГА ----------------
+
+BRODYAGA_RESPONSES = [
+    "🔮 Бродяга молчит… но туман уже дал ответ.",
+    "✨ Да. Но ты поймёшь это слишком поздно.",
+    "⚠️ Нет. И судьба уже закрыла эту дверь.",
+    "🌙 Возможно… если не свернёшь с пути.",
+    "🕯️ Ответ спрятан в том, что ты игнорируешь.",
+    "🔥 Да, но цена тебе не понравится.",
+    "🌫️ Сейчас — пустота. Вернись позже.",
+    "👁️ Я вижу движение… но не вижу тебя в конце пути.",
+    "💀 Нет. И ты это уже чувствуешь.",
+    "🌟 Да. Без сомнений и без жалости.",
+    "🌀 Всё возможно, но ты сам мешаешь исходу.",
+    "📿 Бродяга усмехается… ответ очевиден, если бы ты смотрел."
+]
+
 # ---------------- ROLES ----------------
 
 RANK_ROLES = {
@@ -57,7 +74,6 @@ RANK_ROLES = {
 
 async def init_db():
     global db_pool
-
     db_pool = await asyncpg.create_pool(DATABASE_URL)
 
     async with db_pool.acquire() as conn:
@@ -187,14 +203,12 @@ async def on_message(message):
 
     if db_pool:
         data = await get_user(message.author.id)
-
         data["xp"] += random.randint(8, 18)
 
         await level_up(message.author, data)
         await update_user(message.author.id, data["xp"], data["level"])
 
     await bot.process_commands(message)
-
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -300,7 +314,6 @@ class TTT(discord.ui.View):
             btn.callback = callback
             self.add_item(btn)
 
-
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
     await ctx.send(
@@ -313,7 +326,6 @@ async def ttt(ctx, opponent: discord.Member):
 @bot.command()
 async def ping(ctx):
     await ctx.send("pong")
-
 
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
@@ -328,12 +340,24 @@ async def rank(ctx, member: discord.Member = None):
         f"{data['xp']}/{xp_needed(data['level'])}"
     )
 
+# 🔮 БРОДЯГА (ОРАКУЛ)
+
+@bot.command(name="бродяга")
+async def brodyaga(ctx, *, question=None):
+    if not question:
+        return await ctx.send("🔮 Бродяга ждёт вопроса…")
+
+    answer = random.choice(BRODYAGA_RESPONSES)
+
+    await ctx.send(
+        f"🔮 **Бродяга слышит тебя:** {question}\n\n"
+        f"{answer}"
+    )
 
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     choices = []
-
-    await ctx.send("🔮 Вводи уже варианты, заебал. Потом напиши: готово")
+    await ctx.send("🔮 Вводи варианты, потом напиши: готово")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
