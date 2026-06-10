@@ -25,6 +25,10 @@ voice_last_active = {}
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
+AFK_EXEMPT_USERS = {
+    1113722280573403156
+}
+
 # ---------------- ORACLE: БРОДЯГА ----------------
 
 BRODYAGA_RESPONSES = [
@@ -265,21 +269,30 @@ async def on_voice_state_update(member, before, after):
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
-    # AFK SYSTEM
-    if AFK_CHANNEL_ID and after.channel:
-        afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
+   # AFK SYSTEM
+# AFK SYSTEM
+if AFK_CHANNEL_ID and after.channel:
+    afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
+    if not afk_channel:
+        return
 
-        for m in after.channel.members:
-            if m.bot:
-                continue
+    for m in after.channel.members:
+        if m.bot:
+            continue
 
-            last = voice_last_active.get(m.id, now)
-            if now - last >= 900:
-                try:
-                    await m.move_to(afk_channel)
-                    voice_last_active[m.id] = now
-                except:
-                    pass
+        # ❌ ИСКЛЮЧЕНИЕ
+        if m.id in AFK_EXEMPT_USERS:
+            voice_last_active[m.id] = now
+            continue
+
+        last = voice_last_active.get(m.id, now)
+
+        if now - last >= 900:
+            try:
+                await m.move_to(afk_channel)
+                voice_last_active[m.id] = now
+            except:
+                pass
 
     if after.channel:
         voice_last_active[uid] = now
