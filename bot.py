@@ -25,7 +25,6 @@ voice_last_active = {}
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
-# ❌ AFK EXEMPT USERS
 AFK_EXEMPT_USERS = {
     1113722280573403156
 }
@@ -40,16 +39,34 @@ BRODYAGA_RESPONSES = [
     "✨ Да. Но дорого обойдётся.",
 ]
 
-# ---------------- ROLES ----------------
+# ---------------- ROLES (ВОССТАНОВЛЕНО ПОЛНОСТЬЮ) ----------------
 
 RANK_ROLES = {
     0: 1510087235184099338,
     1: 1510083478094352537,
     5: 1510083899458453505,
     10: 1510083942068260965,
+    15: 1511756823219404821,
     20: 1510083995327795260,
+    25: 1511756481710526694,
+    30: 1511759108104130600,
+    35: 1510084322370256896,
+    40: 1510084249762660373,
+    45: 1511756932992467137,
     50: 1510084369598124052,
+    55: 1511756375485845674,
+    60: 1511759454713024552,
+    65: 1510085042951684206,
+    70: 1511758939870597391,
+    75: 1511759134058614874,
+    80: 1511759165121368134,
+    85: 1511761321388146848,
+    90: 1511759362471891076,
+    95: 1511755811062415502,
     100: 1511759410702057606,
+    105: 1511759483670368276,
+    110: 1511759537684615219,
+    115: 1511759580378562681,
     120: 1511757185053360180
 }
 
@@ -101,12 +118,72 @@ def bar(xp, need):
     p = xp / need
     return "█" * int(p * size) + "░" * (size - int(p * size))
 
+def get_title(level):
+    if level < 1: return "Ноунейм"
+    if level < 5: return "Личинус"
+    if level < 10: return "Бывалый"
+    if level < 15: return "На опыте"
+    if level < 20: return "Роняли вниз головой"
+    if level < 25: return "Пизделка"
+    if level < 30: return "Ошибка природы"
+    if level < 35: return "Пиздец"
+    if level < 40: return "Ебланище"
+    if level < 45: return "Бомж"
+    if level < 50: return "Абортыш"
+    if level < 55: return "Животное"
+    if level < 60: return "Психушка"
+    if level < 65: return "Нехуй делать"
+    if level < 70: return "Легенда сервера"
+    if level < 75: return "Монстр"
+    if level < 80: return "Страпёр"
+    if level < 85: return "Завсегдатый"
+    if level < 90: return "Голос сервера"
+    if level < 95: return "Пробужденный"
+    if level < 100: return "Неуязвимый"
+    if level < 105: return "Ошибка системы"
+    if level < 110: return "Неприкасаемый"
+    if level < 115: return "Финальный босс"
+    if level < 120: return "Босс толчка"
+    return "Мелстрой"
+
+def get_role(level):
+    keys = sorted(RANK_ROLES.keys())
+    chosen = 0
+    for k in keys:
+        if level >= k:
+            chosen = k
+    return RANK_ROLES[chosen]
+
+async def update_roles(member, level):
+    role_id = get_role(level)
+    role = member.guild.get_role(role_id)
+    if not role:
+        return
+
+    all_roles = [member.guild.get_role(r) for r in RANK_ROLES.values()]
+    all_roles = [r for r in all_roles if r]
+
+    await member.remove_roles(*[r for r in member.roles if r in all_roles])
+    await member.add_roles(role)
+
 async def level_up(member, data):
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
         data["level"] += 1
 
     await update_user(member.id, data["xp"], data["level"])
+    await update_roles(member, data["level"])
+
+    channel = bot.get_channel(LEVEL_CHANNEL_ID)
+    if channel:
+        await channel.send(
+            f"🎉 Новый уровень!\n"
+            f"👤 {member.mention}\n"
+            f"⭐ Уровень: {data['level']}\n"
+            f"🏅 Роль: {get_title(data['level'])}\n"
+            f"`{bar(data['xp'], xp_needed(data['level']))}` "
+            f"{data['xp']}/{xp_needed(data['level'])}"
+        )
 
 # ---------------- EVENTS ----------------
 
@@ -131,7 +208,6 @@ async def on_voice_state_update(member, before, after):
     uid = member.id
     now = asyncio.get_event_loop().time()
 
-    # XP voice
     if after.channel and not before.channel:
         voice_activity[uid] = now
 
@@ -144,7 +220,7 @@ async def on_voice_state_update(member, before, after):
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
-    # AFK SYSTEM
+    # AFK SYSTEM + EXCEPTION
     if AFK_CHANNEL_ID and after.channel:
         afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
         if not afk_channel:
@@ -169,88 +245,24 @@ async def on_voice_state_update(member, before, after):
 
         voice_last_active[uid] = now
 
-# ---------------- TTT ----------------
-
-WIN = [
-    (0,1,2),(3,4,5),(6,7,8),
-    (0,3,6),(1,4,7),(2,5,8),
-    (0,4,8),(2,4,6)
-]
-
-def check(board):
-    for a,b,c in WIN:
-        if board[a] == board[b] == board[c] and board[a] != " ":
-            return board[a]
-    return None
-
-
-class TTT(discord.ui.View):
-    def __init__(self, p1, p2):
-        super().__init__(timeout=180)
-        self.players = [p1, p2]
-        self.board = [" "] * 9
-        self.turn = 0
-
-        for i in range(9):
-            self.add_button(i)
-
-    def add_button(self, i):
-        async def callback(interaction):
-            if interaction.user != self.players[self.turn]:
-                return await interaction.response.send_message("Не твой ход", ephemeral=True)
-
-            if self.board[i] != " ":
-                return await interaction.response.send_message("Занято", ephemeral=True)
-
-            self.board[i] = "❌" if self.turn == 0 else "⭕"
-
-            winner = check(self.board)
-
-            if winner:
-                for b in self.children:
-                    b.disabled = True
-                return await interaction.response.edit_message(
-                    content=f"Победил {interaction.user.mention}",
-                    view=self
-                )
-
-            if " " not in self.board:
-                for b in self.children:
-                    b.disabled = True
-                return await interaction.response.edit_message(
-                    content="Ничья",
-                    view=self
-                )
-
-            self.turn = 1 - self.turn
-
-            await interaction.response.edit_message(
-                content=f"Ход: {self.players[self.turn].mention}",
-                view=self
-            )
-
-        btn = discord.ui.Button(
-            label="⬜",
-            style=discord.ButtonStyle.secondary,
-            row=i // 3
-        )
-
-        btn.callback = callback
-        self.add_item(btn)
-
-
-@bot.command()
-async def ttt(ctx, opponent: discord.Member):
-    await ctx.send(
-        f"🎮 {ctx.author.mention} vs {opponent.mention}",
-        view=TTT(ctx.author, opponent)
-    )
-
 # ---------------- COMMANDS ----------------
 
 @bot.command()
 async def ping(ctx):
     await ctx.send("pong")
+
+@bot.command()
+async def rank(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    data = await get_user(member.id)
+
+    await ctx.send(
+        f"📊 {member.display_name}\n\n"
+        f"⭐ Уровень: {data['level']}\n"
+        f"🏅 Роль: {get_title(data['level'])}\n"
+        f"`{bar(data['xp'], xp_needed(data['level']))}`\n"
+        f"{data['xp']}/{xp_needed(data['level'])}"
+    )
 
 @bot.command(name="фортуна")
 async def fortuna(ctx):
