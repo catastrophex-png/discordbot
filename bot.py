@@ -17,14 +17,16 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
+
 voice_activity = {}
-afk_members = set()  
+voice_last_active = {}
+afk_members = set()
+
+AFK_TIMEOUT = 900  # 15 минут
 
 AFK_EXEMPT_USERS = {
     1113722280573403156
 }
-
-AFK_TIMEOUT = 900  # 15 минут
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
@@ -255,15 +257,15 @@ async def on_voice_state_update(member, before, after):
     uid = member.id
     now = asyncio.get_event_loop().time()
 
-    # ---------------- XP VOICE ----------------
+    # вход в войс
     if after.channel and not before.channel:
         voice_activity[uid] = now
+        voice_last_active[uid] = now
 
-        # 🔁 ВОЗВРАТ ИЗ AFK
         if uid in afk_members:
             afk_members.remove(uid)
-            voice_last_active[uid] = now
 
+    # выход из войса
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
         if start:
@@ -272,37 +274,35 @@ async def on_voice_state_update(member, before, after):
             if db_pool:
                 data = await get_user(uid)
                 data["xp"] += int(duration // 60)
-
                 await level_up(member, data)
                 await update_user(uid, data["xp"], data["level"])
 
-    # ---------------- UPDATE ACTIVITY ----------------
+    # обновление активности
     if after.channel:
         voice_last_active[uid] = now
 
-    # ---------------- AFK SYSTEM ----------------
-    if AFK_CHANNEL_ID and after.channel:
-        afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
-        if not afk_channel:
-            return
+        afk_channel = member.guild.afk_channel
 
-        for m in after.channel.members:
-            if m.bot:
-                continue
+        if afk_channel:
+            for m in after.channel.members:
+                if m.bot:
+                    continue
 
-            if m.id in AFK_EXEMPT_USERS:
-                voice_last_active[m.id] = now
-                continue
-
-            last = voice_last_active.get(m.id, now)
-
-            if now - last >= AFK_TIMEOUT:
-                try:
-                    await m.move_to(afk_channel)
-                    afk_members.add(m.id)
+                if m.id in AFK_EXEMPT_USERS:
                     voice_last_active[m.id] = now
-                except:
-                    pass
+                    continue
+
+                last = voice_last_active.get(m.id, now)
+
+                if now - last >= AFK_TIMEOUT:
+                    try:
+                        await m.move_to(afk_channel)
+                        afk_members.add(m.id)
+                        voice_last_active[m.id] = now
+                    except:
+                        pass
+
+
 # ---------------- TTT ----------------
 
 WIN = [
