@@ -17,16 +17,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------------- SETTINGS ----------------
 
 LEVEL_CHANNEL_ID = 1510080367892238336
+AFK_CHANNEL_ID = 1510048410147749898
 
 voice_activity = {}
 voice_last_active = {}
 
-AFK_CHANNEL_ID = 1510048410147749898
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
-# ❌ AFK ИСКЛЮЧЕНИЯ
+# ❌ AFK EXEMPT USERS
 AFK_EXEMPT_USERS = {
     1113722280573403156
 }
@@ -34,17 +33,11 @@ AFK_EXEMPT_USERS = {
 # ---------------- ORACLE ----------------
 
 BRODYAGA_RESPONSES = [
-    "🔮 Бродяга молчит… но туман уже дал ответ.",
-    "✨ Да. Но ты поймёшь это слишком поздно.",
-    "⚠️ Нет. И судьба уже закрыла эту дверь.",
-    "🌙 Возможно… если не свернёшь с пути.",
-    "🕯️ Ответ спрятан в том, что ты игнорируешь.",
-    "🔥 Да, но цена тебе не понравится.",
-    "🌫️ Сейчас — пустота. Вернись позже.",
-    "👁️ Я вижу движение… но не вижу тебя в конце пути.",
-    "💀 Нет. И ты это уже чувствуешь.",
-    "🌟 Да. Без сомнений и без жалости.",
-    "🌀 Всё возможно, но ты сам мешаешь исходу.",
+    "🔮 Да",
+    "🔥 Нет",
+    "🌙 Возможно",
+    "💀 Нет. И ты это знаешь.",
+    "✨ Да. Но дорого обойдётся.",
 ]
 
 # ---------------- ROLES ----------------
@@ -54,12 +47,9 @@ RANK_ROLES = {
     1: 1510083478094352537,
     5: 1510083899458453505,
     10: 1510083942068260965,
-    15: 1511756823219404821,
     20: 1510083995327795260,
-    25: 1511756481710526694,
-    30: 1511759108104130600,
-    35: 1510084322370256896,
-    40: 1510084249762660373,
+    50: 1510084369598124052,
+    100: 1511759410702057606,
     120: 1511757185053360180
 }
 
@@ -111,11 +101,6 @@ def bar(xp, need):
     p = xp / need
     return "█" * int(p * size) + "░" * (size - int(p * size))
 
-def get_title(level):
-    return f"Level {level}"
-
-# ---------------- LEVEL UP ----------------
-
 async def level_up(member, data):
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
@@ -146,7 +131,7 @@ async def on_voice_state_update(member, before, after):
     uid = member.id
     now = asyncio.get_event_loop().time()
 
-    # XP VOICE
+    # XP voice
     if after.channel and not before.channel:
         voice_activity[uid] = now
 
@@ -159,7 +144,7 @@ async def on_voice_state_update(member, before, after):
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
-    # ---------------- AFK SYSTEM ----------------
+    # AFK SYSTEM
     if AFK_CHANNEL_ID and after.channel:
         afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
         if not afk_channel:
@@ -169,7 +154,6 @@ async def on_voice_state_update(member, before, after):
             if m.bot:
                 continue
 
-            # ✅ ИСКЛЮЧЕНИЕ
             if m.id in AFK_EXEMPT_USERS:
                 voice_last_active[m.id] = now
                 continue
@@ -202,14 +186,65 @@ def check(board):
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
-        super().__init__()
+        super().__init__(timeout=180)
         self.players = [p1, p2]
         self.board = [" "] * 9
         self.turn = 0
 
+        for i in range(9):
+            self.add_button(i)
+
+    def add_button(self, i):
+        async def callback(interaction):
+            if interaction.user != self.players[self.turn]:
+                return await interaction.response.send_message("Не твой ход", ephemeral=True)
+
+            if self.board[i] != " ":
+                return await interaction.response.send_message("Занято", ephemeral=True)
+
+            self.board[i] = "❌" if self.turn == 0 else "⭕"
+
+            winner = check(self.board)
+
+            if winner:
+                for b in self.children:
+                    b.disabled = True
+                return await interaction.response.edit_message(
+                    content=f"Победил {interaction.user.mention}",
+                    view=self
+                )
+
+            if " " not in self.board:
+                for b in self.children:
+                    b.disabled = True
+                return await interaction.response.edit_message(
+                    content="Ничья",
+                    view=self
+                )
+
+            self.turn = 1 - self.turn
+
+            await interaction.response.edit_message(
+                content=f"Ход: {self.players[self.turn].mention}",
+                view=self
+            )
+
+        btn = discord.ui.Button(
+            label="⬜",
+            style=discord.ButtonStyle.secondary,
+            row=i // 3
+        )
+
+        btn.callback = callback
+        self.add_item(btn)
+
+
 @bot.command()
 async def ttt(ctx, opponent: discord.Member):
-    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=TTT(ctx.author, opponent))
+    await ctx.send(
+        f"🎮 {ctx.author.mention} vs {opponent.mention}",
+        view=TTT(ctx.author, opponent)
+    )
 
 # ---------------- COMMANDS ----------------
 
@@ -220,7 +255,7 @@ async def ping(ctx):
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     choices = []
-    await ctx.send("Вводи варианты, напиши 'готово'")
+    await ctx.send("Вводи варианты, потом напиши 'готово'")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
@@ -231,7 +266,14 @@ async def fortuna(ctx):
             break
         choices.append(msg.content)
 
-    await ctx.send(random.choice(choices) if choices else "❌ пусто")
+    await ctx.send(random.choice(choices) if choices else "пусто")
+
+@bot.command(name="бродяга")
+async def brodyaga(ctx, *, question=None):
+    if not question:
+        return await ctx.send("🔮 Бродяга ждёт вопроса")
+
+    await ctx.send(f"🔮 {random.choice(BRODYAGA_RESPONSES)}")
 
 # ---------------- START ----------------
 
