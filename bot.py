@@ -19,16 +19,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 LEVEL_CHANNEL_ID = 1510080367892238336
 voice_activity = {}
 
-AFK_CHANNEL_ID = 1510048410147749898
-voice_last_active = {}
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
-
-# ✅ AFK EXEMPT USERS (ТЫ ДОБАВЛЯЕШЬ СЮДА ID)
-AFK_EXEMPT_USERS = {
-    1113722280573403156
-}
 
 # ---------------- ORACLE: БРОДЯГА ----------------
 
@@ -45,8 +37,35 @@ BRODYAGA_RESPONSES = [
     "🌟 Да. Без сомнений и без жалости.",
     "🌀 Всё возможно, но ты сам мешаешь исходу.",
     "📿 Бродяга усмехается… ответ очевиден, если бы ты смотрел.",
+    "🔮 Бродяга смотрит в пустоту… и просит тебя не отвлекать его от смысла жизни.",
+    "✨ Да. Но только если ты перестанешь делать то, что делаешь сейчас.",
+    "⚠️ Нет. Даже чайник вскипает быстрее, чем это случится.",
+    "🌙 Возможно… но Вселенная пока занята более интересными людьми.",
+    "🕯️ Ответ спрятан. Я тоже не знаю где. И это пугает.",
+    "🔥 Да, но потом ты пожалеешь и скажешь 'почему я спросил'.",
+    "🌫️ Сейчас будущее занято. Попробуй позже, оно в отпуске.",
+    "👁️ Я вижу… что ты снова задаёшь странные вопросы.",
+    "💀 Нет. Даже если очень попросишь.",
+    "🌟 Да. Но это подозрительно и я бы тебе не доверял.",
+    "🌀 Всё возможно, но ты выбрал самый странный таймлайн.",
+    "📿 Бродяга вздыхает. Он видел лучше вопросы в микроволновке.",
+    "🍺 Будущее сейчас недоступно — оно на перерыве.",
+    "🐌 Да… но улитка уже успела бы три раза дойти быстрее.",
+    "🧠 Ты уже знаешь ответ. Просто тебе лень признать это.",
+    "🚪 Ответ есть. Но он ушёл и закрыл за собой дверь.",
+    "🔮 Бродяга долго думает… и решает, что ты справишься сам.",
+    "✨ Да. Но только если не будешь мешать вселенной своими вопросами.",
+    "⚠️ Нет. И честно, это даже к лучшему для всех.",
+    "🌙 Возможно… но вероятность как найти нормальный Wi-Fi в лесу.",
+    "🕯️ Ответ есть, но он слишком ленив, чтобы появиться.",
+    "🔥 Да, но потом ты будешь делать вид, что это была не твоя идея.",
+    "🌫️ Будущее сейчас занято — оно спорит с прошлым.",
+    "👁️ Я вижу… как ты снова спрашиваешь что-то странное.",
+    "💀 Нет. И не задавай этот вопрос ещё раз, мне уже стыдно за тебя.",
+    "🌀 Всё возможно… но ты выбрал самый сомнительный вариант из всех.",
     "💀 Нет.",
-    "🔥 Да.",
+    "🔥 Да. ",
+    
 ]
 
 # ---------------- ROLES ----------------
@@ -196,11 +215,11 @@ async def level_up(member, data):
 
     if channel:
         await channel.send(
-            f"🎉 Новый уровень!\n\n"
+            f"🎉 Новый уровень! Иди нахуй \n\n"
             f"👤 {member.mention}\n"
             f"⭐ Уровень: {data['level']}\n"
             f"🏅 Роль: {get_title(data['level'])}\n"
-            f"`{bar(data['xp'], xp_needed(data['level']))}` "
+            f"{bar(data['xp'], xp_needed(data['level']))} "
             f"{data['xp']}/{xp_needed(data['level'])}"
         )
 
@@ -211,11 +230,12 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    data = await get_user(message.author.id)
-    data["xp"] += random.randint(8, 18)
+    if db_pool:
+        data = await get_user(message.author.id)
+        data["xp"] += random.randint(8, 18)
 
-    await level_up(message.author, data)
-    await update_user(message.author.id, data["xp"], data["level"])
+        await level_up(message.author, data)
+        await update_user(message.author.id, data["xp"], data["level"])
 
     await bot.process_commands(message)
 
@@ -225,46 +245,23 @@ async def on_voice_state_update(member, before, after):
         return
 
     uid = member.id
-    now = asyncio.get_event_loop().time()
 
-    # XP voice
     if after.channel and not before.channel:
-        voice_activity[uid] = now
+        voice_activity[uid] = asyncio.get_event_loop().time()
 
     elif before.channel and not after.channel:
         start = voice_activity.pop(uid, None)
-        if start:
-            duration = now - start
-            data = await get_user(uid)
-            data["xp"] += int(duration // 60)
-            await level_up(member, data)
-            await update_user(uid, data["xp"], data["level"])
-
-    # ---------------- AFK SYSTEM (ИСПРАВЛЕНО + EXEMPT) ----------------
-    if AFK_CHANNEL_ID and after.channel:
-        afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
-        if not afk_channel:
+        if not start:
             return
 
-        for m in after.channel.members:
-            if m.bot:
-                continue
+        duration = asyncio.get_event_loop().time() - start
 
-            # ❌ исключение
-            if m.id in AFK_EXEMPT_USERS:
-                voice_last_active[m.id] = now
-                continue
+        if db_pool:
+            data = await get_user(uid)
+            data["xp"] += int(duration // 60)
 
-            last = voice_last_active.get(m.id, now)
-
-            if now - last >= 900:
-                try:
-                    await m.move_to(afk_channel)
-                    voice_last_active[m.id] = now
-                except:
-                    pass
-
-        voice_last_active[uid] = now
+            await level_up(member, data)
+            await update_user(uid, data["xp"], data["level"])
 
 # ---------------- TTT ----------------
 
@@ -283,7 +280,7 @@ def check(board):
 
 class TTT(discord.ui.View):
     def __init__(self, p1, p2):
-        super().__init__(timeout=180)
+        super().__init__()
         self.players = [p1, p2]
         self.board = [" "] * 9
         self.turn = 0
@@ -305,10 +302,10 @@ class TTT(discord.ui.View):
             async def callback(interaction, index=i):
 
                 if interaction.user != self.players[self.turn]:
-                    return await interaction.response.send_message("⛔ не твой ход", ephemeral=True)
+                    return await interaction.response.send_message("⛔ Эй псина, не твой ход", ephemeral=True)
 
                 if self.board[index] != " ":
-                    return await interaction.response.send_message("⛔ занято", ephemeral=True)
+                    return await interaction.response.send_message("⛔ Занято нахуй", ephemeral=True)
 
                 self.board[index] = "❌" if self.turn == 0 else "⭕"
 
@@ -317,16 +314,18 @@ class TTT(discord.ui.View):
                 if winner:
                     for b in self.children:
                         b.disabled = True
+
                     return await interaction.response.edit_message(
-                        content=f"🏆 Победил {interaction.user.mention}",
+                        content=f"🏆 Победитель: {interaction.user.mention}",
                         view=self
                     )
 
                 if " " not in self.board:
                     for b in self.children:
                         b.disabled = True
+
                     return await interaction.response.edit_message(
-                        content="🤝 ничья",
+                        content="🤝 Ничья",
                         view=self
                     )
 
@@ -357,10 +356,37 @@ async def ttt(ctx, opponent: discord.Member):
 async def ping(ctx):
     await ctx.send("pong")
 
+@bot.command()
+async def rank(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    data = await get_user(member.id)
+
+    await ctx.send(
+        f"📊 {member.display_name}\n\n"
+        f"⭐ Уровень: {data['level']}\n"
+        f"🏅 Роль: {get_title(data['level'])}\n"
+        f"{bar(data['xp'], xp_needed(data['level']))}\n"
+        f"{data['xp']}/{xp_needed(data['level'])}"
+    )
+
+# 🔮 БРОДЯГА (ОРАКУЛ)
+
+@bot.command(name="бродяга")
+async def brodyaga(ctx, *, question=None):
+    if not question:
+        return await ctx.send("🔮 Бродяга ждёт вопроса…")
+
+    answer = random.choice(BRODYAGA_RESPONSES)
+
+    await ctx.send(
+        f"🔮 **Бродяга слышит тебя:** {question}\n\n"
+        f"{answer}"
+    )
+
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     choices = []
-    await ctx.send("Вводи варианты, потом напиши: готово")
+    await ctx.send("🔮 Вводи варианты, потом напиши: готово")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
@@ -371,14 +397,10 @@ async def fortuna(ctx):
             break
         choices.append(msg.content)
 
-    await ctx.send(f"🔮 {random.choice(choices)}" if choices else "пусто")
+    if not choices:
+        return await ctx.send("❌ нет вариантов")
 
-@bot.command(name="бродяга")
-async def brodyaga(ctx, *, question=None):
-    if not question:
-        return await ctx.send("🔮 Бродяга ждёт вопроса")
-
-    await ctx.send(f"🔮 {random.choice(BRODYAGA_RESPONSES)}")
+    await ctx.send(f"🔮 {random.choice(choices)}")
 
 # ---------------- START ----------------
 
