@@ -25,9 +25,7 @@ voice_last_active = {}
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
-AFK_EXEMPT_USERS = {
-    1113722280573403156
-}
+AFK_EXEMPT_USERS = {1113722280573403156}
 
 # ---------------- ORACLE ----------------
 
@@ -39,7 +37,7 @@ BRODYAGA_RESPONSES = [
     "✨ Да. Но дорого обойдётся.",
 ]
 
-# ---------------- ROLES (ВОССТАНОВЛЕНО ПОЛНОСТЬЮ) ----------------
+# ---------------- ROLES ----------------
 
 RANK_ROLES = {
     0: 1510087235184099338,
@@ -119,52 +117,7 @@ def bar(xp, need):
     return "█" * int(p * size) + "░" * (size - int(p * size))
 
 def get_title(level):
-    if level < 1: return "Ноунейм"
-    if level < 5: return "Личинус"
-    if level < 10: return "Бывалый"
-    if level < 15: return "На опыте"
-    if level < 20: return "Роняли вниз головой"
-    if level < 25: return "Пизделка"
-    if level < 30: return "Ошибка природы"
-    if level < 35: return "Пиздец"
-    if level < 40: return "Ебланище"
-    if level < 45: return "Бомж"
-    if level < 50: return "Абортыш"
-    if level < 55: return "Животное"
-    if level < 60: return "Психушка"
-    if level < 65: return "Нехуй делать"
-    if level < 70: return "Легенда сервера"
-    if level < 75: return "Монстр"
-    if level < 80: return "Страпёр"
-    if level < 85: return "Завсегдатый"
-    if level < 90: return "Голос сервера"
-    if level < 95: return "Пробужденный"
-    if level < 100: return "Неуязвимый"
-    if level < 105: return "Ошибка системы"
-    if level < 110: return "Неприкасаемый"
-    if level < 115: return "Финальный босс"
-    if level < 120: return "Босс толчка"
-    return "Мелстрой"
-
-def get_role(level):
-    keys = sorted(RANK_ROLES.keys())
-    chosen = 0
-    for k in keys:
-        if level >= k:
-            chosen = k
-    return RANK_ROLES[chosen]
-
-async def update_roles(member, level):
-    role_id = get_role(level)
-    role = member.guild.get_role(role_id)
-    if not role:
-        return
-
-    all_roles = [member.guild.get_role(r) for r in RANK_ROLES.values()]
-    all_roles = [r for r in all_roles if r]
-
-    await member.remove_roles(*[r for r in member.roles if r in all_roles])
-    await member.add_roles(role)
+    return f"LVL {level}"
 
 async def level_up(member, data):
     while data["xp"] >= xp_needed(data["level"]):
@@ -172,18 +125,6 @@ async def level_up(member, data):
         data["level"] += 1
 
     await update_user(member.id, data["xp"], data["level"])
-    await update_roles(member, data["level"])
-
-    channel = bot.get_channel(LEVEL_CHANNEL_ID)
-    if channel:
-        await channel.send(
-            f"🎉 Новый уровень!\n"
-            f"👤 {member.mention}\n"
-            f"⭐ Уровень: {data['level']}\n"
-            f"🏅 Роль: {get_title(data['level'])}\n"
-            f"`{bar(data['xp'], xp_needed(data['level']))}` "
-            f"{data['xp']}/{xp_needed(data['level'])}"
-        )
 
 # ---------------- EVENTS ----------------
 
@@ -220,7 +161,7 @@ async def on_voice_state_update(member, before, after):
             await level_up(member, data)
             await update_user(uid, data["xp"], data["level"])
 
-    # AFK SYSTEM + EXCEPTION
+    # AFK SYSTEM
     if AFK_CHANNEL_ID and after.channel:
         afk_channel = member.guild.get_channel(AFK_CHANNEL_ID)
         if not afk_channel:
@@ -245,6 +186,80 @@ async def on_voice_state_update(member, before, after):
 
         voice_last_active[uid] = now
 
+# ---------------- TTT ----------------
+
+WIN = [
+    (0,1,2),(3,4,5),(6,7,8),
+    (0,3,6),(1,4,7),(2,5,8),
+    (0,4,8),(2,4,6)
+]
+
+def check(board):
+    for a,b,c in WIN:
+        if board[a] == board[b] == board[c] and board[a] != " ":
+            return board[a]
+    return None
+
+
+class TTT(discord.ui.View):
+    def __init__(self, p1, p2):
+        super().__init__(timeout=180)
+        self.players = [p1, p2]
+        self.board = [" "] * 9
+        self.turn = 0
+        self.buttons()
+
+    def buttons(self):
+        self.clear_items()
+
+        for i in range(9):
+            btn = discord.ui.Button(label="⬜", style=discord.ButtonStyle.secondary, row=i // 3)
+
+            async def callback(interaction, index=i):
+                if interaction.user != self.players[self.turn]:
+                    return await interaction.response.send_message("Не твой ход", ephemeral=True)
+
+                if self.board[index] != " ":
+                    return await interaction.response.send_message("Занято", ephemeral=True)
+
+                self.board[index] = "❌" if self.turn == 0 else "⭕"
+
+                winner = check(self.board)
+
+                if winner:
+                    for b in self.children:
+                        b.disabled = True
+                    return await interaction.response.edit_message(
+                        content=f"🏆 Победил {interaction.user.mention}",
+                        view=self
+                    )
+
+                if " " not in self.board:
+                    for b in self.children:
+                        b.disabled = True
+                    return await interaction.response.edit_message(
+                        content="🤝 Ничья",
+                        view=self
+                    )
+
+                self.turn = 1 - self.turn
+
+                new_view = TTT(self.players[0], self.players[1])
+                new_view.board = self.board
+                new_view.turn = self.turn
+
+                await interaction.response.edit_message(
+                    content=f"Ход: {self.players[self.turn].mention}",
+                    view=new_view
+                )
+
+            btn.callback = callback
+            self.add_item(btn)
+
+@bot.command()
+async def ttt(ctx, opponent: discord.Member):
+    await ctx.send(f"🎮 {ctx.author.mention} vs {opponent.mention}", view=TTT(ctx.author, opponent))
+
 # ---------------- COMMANDS ----------------
 
 @bot.command()
@@ -257,9 +272,8 @@ async def rank(ctx, member: discord.Member = None):
     data = await get_user(member.id)
 
     await ctx.send(
-        f"📊 {member.display_name}\n\n"
-        f"⭐ Уровень: {data['level']}\n"
-        f"🏅 Роль: {get_title(data['level'])}\n"
+        f"📊 {member.display_name}\n"
+        f"⭐ Level: {data['level']}\n"
         f"`{bar(data['xp'], xp_needed(data['level']))}`\n"
         f"{data['xp']}/{xp_needed(data['level'])}"
     )
@@ -267,7 +281,8 @@ async def rank(ctx, member: discord.Member = None):
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     choices = []
-    await ctx.send("Вводи варианты, потом напиши 'готово'")
+
+    await ctx.send("Вводи варианты, напиши 'готово'")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
@@ -283,9 +298,9 @@ async def fortuna(ctx):
 @bot.command(name="бродяга")
 async def brodyaga(ctx, *, question=None):
     if not question:
-        return await ctx.send("🔮 Бродяга ждёт вопроса")
+        return await ctx.send("нет вопроса")
 
-    await ctx.send(f"🔮 {random.choice(BRODYAGA_RESPONSES)}")
+    await ctx.send(random.choice(BRODYAGA_RESPONSES))
 
 # ---------------- START ----------------
 
