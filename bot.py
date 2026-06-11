@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import random
 import asyncio
@@ -235,24 +235,6 @@ async def level_up(member, data):
 # ---------------- EVENTS ----------------
 
 @bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    if db_pool:
-        data = await get_user(message.author.id)
-        data["xp"] += random.randint(8, 18)
-
-        leveled = await level_up(message.author, data)
-
-        await update_user(
-            message.author.id,
-            data["xp"],
-            data["level"]
-        )
-
-    await bot.process_commands(message)
-@bot.event
 async def on_voice_state_update(member, before, after):
     if member.bot:
         return
@@ -260,61 +242,53 @@ async def on_voice_state_update(member, before, after):
     uid = member.id
     now = asyncio.get_event_loop().time()
 
-    # вход в войс
-    if after.channel and not before.channel:
-        voice_activity[uid] = now
-        voice_last_active[uid] = now
-
-        if uid in afk_members:
-            afk_members.remove(uid)
-
-    # выход из войса
-    elif before.channel and not after.channel:
-        start = voice_activity.pop(uid, None)
-        if start:
-            duration = now - start
-
-            if db_pool:
-                data = await get_user(uid)
-                data["xp"] += int(duration // 60)
-                await level_up(member, data)
-                await update_user(uid, data["xp"], data["level"])
-
-    # обновление активности
     if after.channel:
         voice_last_active[uid] = now
 
-        afk_channel = member.guild.afk_channel
+        if before.channel and (
+            before.self_mute != after.self_mute or
+            before.self_deaf != after.self_deaf
+        ):
+            voice_last_active[uid] = now
 
-       if afk_channel:
-    for m in after.channel.members:
-        if m.bot:
+# ---------------- AFK LOOP ----------------
+
+@tasks.loop(minutes=1)
+async def check_afk():
+    now = asyncio.get_event_loop().time()
+
+    for guild in bot.guilds:
+        afk_channel = guild.afk_channel
+
+        if not afk_channel:
             continue
 
-        if m.id in AFK_EXEMPT_USERS:
-            continue
+        for vc in guild.voice_channels:
+            if vc == afk_channel:
+                continue
 
-        # Проверяем, что пользователь сам себя замьютил
-        # или заглушил звук
-        if not m.voice:
-            continue
+            for member in vc.members:
+                if member.bot:
+                    continue
 
-        if not (m.voice.self_mute or m.voice.self_deaf):
-            # Человек не в муте и не deaf — не считаем его AFK
-            continue
+                if member.id in AFK_EXEMPT_USERS:
+                    continue
 
-        last = voice_last_active.get(m.id, now)
+                if not member.voice:
+                    continue
 
-        if now - last >= AFK_TIMEOUT:
-            try:
-                await m.move_to(afk_channel)
-                afk_members.add(m.id)
-                voice_last_active[m.id] = now
-            except discord.Forbidden:
-                print(f"Нет прав переместить {m}")
-            except discord.HTTPException:
-                pass
+                if not (member.voice.self_mute or member.voice.self_deaf):
+                    continue
 
+                last = voice_last_active.get(member.id)
+
+                if last and now - last >= AFK_TIMEOUT:
+                    try:
+                        await member.move_to(afk_channel)
+                        afk_members.add(member.id)
+                        voice_last_active[member.id] = now
+                    except:
+                        pass
 
 # ---------------- TTT ----------------
 
@@ -463,6 +437,9 @@ async def setup_hook():
 
 @bot.event
 async def on_ready():
+    if not check_afk.is_running():
+        check_afk.start()
+
     print("BOT ONLINE:", bot.user)
 
 bot.run(os.getenv("TOKEN"))
