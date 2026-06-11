@@ -286,24 +286,34 @@ async def on_voice_state_update(member, before, after):
 
         afk_channel = member.guild.afk_channel
 
-        if afk_channel:
-            for m in after.channel.members:
-                if m.bot:
-                    continue
+       if afk_channel:
+    for m in after.channel.members:
+        if m.bot:
+            continue
 
-                if m.id in AFK_EXEMPT_USERS:
-                    voice_last_active[m.id] = now
-                    continue
+        if m.id in AFK_EXEMPT_USERS:
+            continue
 
-                last = voice_last_active.get(m.id, now)
+        # Проверяем, что пользователь сам себя замьютил
+        # или заглушил звук
+        if not m.voice:
+            continue
 
-                if now - last >= AFK_TIMEOUT:
-                    try:
-                        await m.move_to(afk_channel)
-                        afk_members.add(m.id)
-                        voice_last_active[m.id] = now
-                    except:
-                        pass
+        if not (m.voice.self_mute or m.voice.self_deaf):
+            # Человек не в муте и не deaf — не считаем его AFK
+            continue
+
+        last = voice_last_active.get(m.id, now)
+
+        if now - last >= AFK_TIMEOUT:
+            try:
+                await m.move_to(afk_channel)
+                afk_members.add(m.id)
+                voice_last_active[m.id] = now
+            except discord.Forbidden:
+                print(f"Нет прав переместить {m}")
+            except discord.HTTPException:
+                pass
 
 
 # ---------------- TTT ----------------
