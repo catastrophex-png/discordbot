@@ -215,9 +215,8 @@ async def level_up(member, data):
         leveled = True
 
     if not leveled:
-        return
+        return False
 
-    await update_user(member.id, data["xp"], data["level"])
     await update_roles(member, data["level"])
 
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
@@ -232,6 +231,7 @@ async def level_up(member, data):
             f"{data['xp']}/{xp_needed(data['level'])}"
         )
 
+    return True
 # ---------------- EVENTS ----------------
 
 @bot.event
@@ -243,12 +243,15 @@ async def on_message(message):
         data = await get_user(message.author.id)
         data["xp"] += random.randint(8, 18)
 
-        await level_up(message.author, data)
-        await update_user(message.author.id, data["xp"], data["level"])
+        leveled = await level_up(message.author, data)
+
+        await update_user(
+            message.author.id,
+            data["xp"],
+            data["level"]
+        )
 
     await bot.process_commands(message)
-
-
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.bot:
