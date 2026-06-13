@@ -303,106 +303,87 @@ class RouletteView(discord.ui.View):
         self.reward = 0
         self.penalty = 0
 
-        self.build_choose()
+    # ---------------- КНОПКИ ВЫБОРА ----------------
 
-    # ---------------- ВЫБОР СЛОЖНОСТИ ----------------
+    @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
+    async def easy(self, interaction, button):
+        await self.set_difficulty(interaction, 1, 10, -10)
 
-    def build_choose(self):
-        self.clear_items()
+    @discord.ui.button(label="🟠 Средний", style=discord.ButtonStyle.primary)
+    async def mid(self, interaction, button):
+        await self.set_difficulty(interaction, 3, 30, -30)
 
-        async def set_easy(interaction):
-            await self.set_difficulty(interaction, 1, 10, -10)
-
-        async def set_mid(interaction):
-            await self.set_difficulty(interaction, 3, 30, -30)
-
-        async def set_hard(interaction):
-            await self.set_difficulty(interaction, 6, 120, -60)
-
-        b1 = ui.Button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
-        b2 = ui.Button(label="🟠 Средний", style=discord.ButtonStyle.primary)
-        b3 = ui.Button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
-
-        b1.callback = set_easy
-        b2.callback = set_mid
-        b3.callback = set_hard
-
-        self.add_item(b1)
-        self.add_item(b2)
-        self.add_item(b3)
+    @discord.ui.button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
+    async def hard(self, interaction, button):
+        await self.set_difficulty(interaction, 6, 120, -60)
 
     async def set_difficulty(self, interaction, bullets, reward, penalty):
         if interaction.user != self.user:
-            return await interaction.response.send_message("⛔ Это не твоя рулетка", ephemeral=True)
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
         self.bullets = bullets
         self.reward = reward
         self.penalty = penalty
         self.step = "shoot"
 
-        self.clear_items()
+        # убираем кнопки выбора
+        for item in self.children:
+            item.disabled = True
 
         await interaction.response.edit_message(
             content="🔫 Барабан заряжен.\nЧто делаем?",
             view=self
         )
 
-        self.build_shoot()
+        # добавляем кнопки стрельбы
+        self.add_item(ShootButton(self))
+        self.add_item(PassButton(self))
 
-    # ---------------- ВЫСТРЕЛ / ПАС ----------------
 
-    def build_shoot(self):
-        self.clear_items()
+class ShootButton(discord.ui.Button):
+    def __init__(self, view):
+        super().__init__(label="💥 Выстрел", style=discord.ButtonStyle.danger)
+        self.view_ref = view
 
-        async def shoot(interaction):
-            if interaction.user != self.user:
-                return await interaction.response.send_message("⛔ Не твоя игра", ephemeral=True)
+    async def callback(self, interaction):
+        v = self.view_ref
 
-            roll = random.randint(1, 7)
+        if interaction.user != v.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-            if roll <= self.bullets:
-                # проигрыш
-                await self.apply_xp(interaction, self.penalty, False)
-            else:
-                await self.apply_xp(interaction, self.reward, True)
+        roll = random.randint(1, 7)
 
-        async def pass_game(interaction):
-            if interaction.user != self.user:
-                return await interaction.response.send_message("⛔ Не твоя игра", ephemeral=True)
+        data = await get_user(interaction.user.id)
 
-            self.stop()
-            await interaction.response.edit_message(
-                content="🚪 Ты решил пожить ещё один день.\nОпыт сохранён.",
-                view=None
-            )
+        if roll <= v.bullets:
+            data["xp"] += v.penalty
+            result = "💀 БАХ! Ты проиграл."
+        else:
+            data["xp"] += v.reward
+            result = "😮 Ты выжил!"
 
-        b1 = ui.Button(label="💥 Выстрел", style=discord.ButtonStyle.danger)
-        b2 = ui.Button(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+        await update_user(interaction.user.id, data["xp"], data["level"])
 
-        b1.callback = shoot
-        b2.callback = pass_game
+        await interaction.response.edit_message(content=result, view=None)
+        v.stop()
 
-        self.add_item(b1)
-        self.add_item(b2)
 
-async def apply_xp(self, interaction, xp_change, survived: bool):
-    self.stop()
+class PassButton(discord.ui.Button):
+    def __init__(self, view):
+        super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+        self.view_ref = view
 
-    user = interaction.user
-    data = await get_user(user.id)
+    async def callback(self, interaction):
+        v = self.view_ref
 
-    data["xp"] += xp_change
+        if interaction.user != v.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-    await update_user(user.id, data["xp"], data["level"])
-
-    await level_up(user, data)
-
-    result = "😮 Ты выжил!" if survived else "💀 БАХ! Ты проиграл."
-
-    await interaction.response.edit_message(
-        content=f"{result}\n\nИзменение XP: {xp_change}",
-        view=None
-    )
+        await interaction.response.edit_message(
+            content="🚪 Ты решил пожить ещё один день.",
+            view=None
+        )
+        v.stop()
 # ---------------- TTT ----------------
 
 WIN = [
