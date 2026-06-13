@@ -4,6 +4,7 @@ import os
 import random
 import asyncio
 import asyncpg
+from discord import ui
 
 # ---------------- INTENTS ----------------
 
@@ -114,7 +115,7 @@ async def init_db():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL)
 
-    async with db_pool.acquire() as conn:
+async with db_pool.acquire() as conn:
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -289,6 +290,116 @@ async def check_afk():
                         voice_last_active[member.id] = now
                     except:
                         pass
+import random
+# ------------- Roulette --------------
+class RouletteView(discord.ui.View):
+    def __init__(self, user: discord.Member):
+        super().__init__(timeout=60)
+        self.user = user
+
+        self.step = "choose"
+        self.bullets = 0
+        self.reward = 0
+        self.penalty = 0
+
+        self.build_choose()
+
+    # ---------------- ВЫБОР СЛОЖНОСТИ ----------------
+
+    def build_choose(self):
+        self.clear_items()
+
+        async def set_easy(interaction):
+            await self.set_difficulty(interaction, 1, 10, -10)
+
+        async def set_mid(interaction):
+            await self.set_difficulty(interaction, 3, 30, -30)
+
+        async def set_hard(interaction):
+            await self.set_difficulty(interaction, 6, 120, -60)
+
+        b1 = ui.Button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
+        b2 = ui.Button(label="🟠 Средний", style=discord.ButtonStyle.primary)
+        b3 = ui.Button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
+
+        b1.callback = set_easy
+        b2.callback = set_mid
+        b3.callback = set_hard
+
+        self.add_item(b1)
+        self.add_item(b2)
+        self.add_item(b3)
+
+    async def set_difficulty(self, interaction, bullets, reward, penalty):
+        if interaction.user != self.user:
+            return await interaction.response.send_message("⛔ Это не твоя рулетка", ephemeral=True)
+
+        self.bullets = bullets
+        self.reward = reward
+        self.penalty = penalty
+        self.step = "shoot"
+
+        self.clear_items()
+
+        await interaction.response.edit_message(
+            content="🔫 Барабан заряжен.\nЧто делаем?",
+            view=self
+        )
+
+        self.build_shoot()
+
+    # ---------------- ВЫСТРЕЛ / ПАС ----------------
+
+    def build_shoot(self):
+        self.clear_items()
+
+        async def shoot(interaction):
+            if interaction.user != self.user:
+                return await interaction.response.send_message("⛔ Не твоя игра", ephemeral=True)
+
+            roll = random.randint(1, 7)
+
+            if roll <= self.bullets:
+                # проигрыш
+                await self.apply_xp(interaction, self.penalty, False)
+            else:
+                await self.apply_xp(interaction, self.reward, True)
+
+        async def pass_game(interaction):
+            if interaction.user != self.user:
+                return await interaction.response.send_message("⛔ Не твоя игра", ephemeral=True)
+
+            self.stop()
+            await interaction.response.edit_message(
+                content="🚪 Ты решил пожить ещё один день.\nОпыт сохранён.",
+                view=None
+            )
+
+        b1 = ui.Button(label="💥 Выстрел", style=discord.ButtonStyle.danger)
+        b2 = ui.Button(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+
+        b1.callback = shoot
+        b2.callback = pass_game
+
+        self.add_item(b1)
+        self.add_item(b2)
+
+    async def apply_xp(self, interaction, xp_change, survived: bool):
+        self.stop()
+
+        user_id = interaction.user.id
+        data = await get_user(user_id)
+
+        data["xp"] += xp_change
+
+        await update_user(user_id, data["xp"], data["level"])
+
+        result = "😮 Ты выжил!" if survived else "💀 БАХ! Ты проиграл."
+
+        await interaction.response.edit_message(
+            content=f"{result}\n\nИзменение XP: {xp_change}",
+            view=None
+        )
 
 # ---------------- TTT ----------------
 
@@ -428,6 +539,19 @@ async def fortuna(ctx):
         return await ctx.send("❌ нет вариантов")
 
     await ctx.send(f"🔮 {random.choice(choices)}")
+
+@bot.command()
+async def рулетка(ctx):
+    view = RouletteView(ctx.author)
+
+    await ctx.send(
+        "🔫 Русская рулетка\n\n"
+        "Выбери уровень риска:\n\n"
+        "🟢 Лёгкий — 1 из 7 (+10 / -10)\n"
+        "🟠 Средний — 3 из 7 (+30 / -30)\n"
+        "🔴 Безумец — 6 из 7 (+120 / -60)\n",
+        view=view
+    )
 
 # ---------------- START ----------------
 
