@@ -318,28 +318,28 @@ class RouletteView(discord.ui.View):
         await self.set(interaction, 6, 120, -60)
 
     async def set(self, interaction, b, r, p):
-        if interaction.user != self.user:
-            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+    if interaction.user != self.user:
+        return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-        self.bullets = b
-        self.reward = r
-        self.penalty = p
-        self.step = "shoot"
+    self.bullets = b
+    self.reward = r
+    self.penalty = p
+    self.step = "shoot"
 
-        # отключаем кнопки выбора
-        for c in self.children:
-            c.disabled = True
+    # отключаем старые кнопки
+    for c in self.children:
+        c.disabled = True
 
-        await interaction.response.edit_message(
-            content="🔫 Барабан заряжен.\nЧто делаем?",
-            view=self
-        )
+    # ❗ добавляем новые кнопки ДО edit_message
+    self.clear_items()
+    self.add_item(Shoot(self))
+    self.add_item(Pass(self))
 
-        # добавляем новые кнопки (НО ОДИН РАЗ)
-        self.add_item(Shoot(self))
-        self.add_item(Pass(self))
-
-
+    await interaction.response.edit_message(
+        content="🔫 Барабан заряжен.\nЧто делаем?",
+        view=self
+    )
+    
 class Shoot(discord.ui.Button):
     def __init__(self, view):
         super().__init__(label="💥 Выстрел", style=discord.ButtonStyle.danger)
