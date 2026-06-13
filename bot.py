@@ -115,7 +115,7 @@ async def init_db():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL)
 
-async with db_pool.acquire() as conn:
+    async with db_pool.acquire() as conn:
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -290,8 +290,9 @@ async def check_afk():
                         voice_last_active[member.id] = now
                     except:
                         pass
-import random
+                        
 # ------------- Roulette --------------
+
 class RouletteView(discord.ui.View):
     def __init__(self, user: discord.Member):
         super().__init__(timeout=60)
@@ -384,23 +385,24 @@ class RouletteView(discord.ui.View):
         self.add_item(b1)
         self.add_item(b2)
 
-    async def apply_xp(self, interaction, xp_change, survived: bool):
-        self.stop()
+async def apply_xp(self, interaction, xp_change, survived: bool):
+    self.stop()
 
-        user_id = interaction.user.id
-        data = await get_user(user_id)
+    user = interaction.user
+    data = await get_user(user.id)
 
-        data["xp"] += xp_change
+    data["xp"] += xp_change
 
-        await update_user(user_id, data["xp"], data["level"])
+    await update_user(user.id, data["xp"], data["level"])
 
-        result = "😮 Ты выжил!" if survived else "💀 БАХ! Ты проиграл."
+    await level_up(user, data)
 
-        await interaction.response.edit_message(
-            content=f"{result}\n\nИзменение XP: {xp_change}",
-            view=None
-        )
+    result = "😮 Ты выжил!" if survived else "💀 БАХ! Ты проиграл."
 
+    await interaction.response.edit_message(
+        content=f"{result}\n\nИзменение XP: {xp_change}",
+        view=None
+    )
 # ---------------- TTT ----------------
 
 WIN = [
