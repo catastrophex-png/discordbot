@@ -302,21 +302,21 @@ class RouletteView(discord.ui.View):
         self.reward = 0
         self.penalty = 0
 
-    @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🟢 изи", style=discord.ButtonStyle.success)
     async def easy(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 1, 10, -10)
 
-    @discord.ui.button(label="🟠 Средний", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="🟠 мид", style=discord.ButtonStyle.primary)
     async def mid(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 3, 30, -30)
 
-    @discord.ui.button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="🔴 безумие", style=discord.ButtonStyle.danger)
     async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 6, 120, -60)
 
     async def set(self, interaction: discord.Interaction, b, r, p):
         if interaction.user != self.user:
-            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+            return await interaction.response.send_message("⛔ руки нах убрал", ephemeral=True)
 
         self.bullets = b
         self.reward = r
@@ -339,7 +339,7 @@ class Shoot(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.user != self.v.user:
-            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+            return await interaction.response.send_message("⛔ руки нах убрал", ephemeral=True)
 
         await interaction.response.defer()
 
@@ -352,10 +352,10 @@ class Shoot(discord.ui.Button):
         # результат
         if roll <= self.v.bullets:
             delta = self.v.penalty
-            text = "💀 БАХ! Ты проиграл"
+            text = "💀 БАХ! Ты проиграл. Сам знал на что идёшь"
         else:
             delta = self.v.reward
-            text = "😮 выжил"
+            text = "😮 ахуеть ты выжил"
 
         data["xp"] += delta
 
@@ -382,11 +382,11 @@ class Pass(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.user != self.v.user:
-            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+            return await interaction.response.send_message("⛔ руки нах убрал", ephemeral=True)
 
         await interaction.response.defer()
 
-        await interaction.message.edit(content="🚪 живёшь ещё день", view=None)
+        await interaction.message.edit(content="🚪 поживи пока", view=None)
         self.v.stop()
 # ---------------- TTT ----------------
 
