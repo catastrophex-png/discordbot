@@ -292,33 +292,31 @@ async def check_afk():
                         pass
                         
 # ------------- Roulette --------------
-
 class RouletteView(discord.ui.View):
     def __init__(self, user: discord.Member):
         super().__init__(timeout=60)
         self.user = user
-
         self.bullets = 0
         self.reward = 0
         self.penalty = 0
 
-    # ---------------- CHOICE ----------------
+    # ---------------- DIFFICULTY ----------------
 
     @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
     async def easy(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.set(interaction, 1, 10, -10)
+        await self.set_game(interaction, 1, 10, -10)
 
     @discord.ui.button(label="🟠 Средний", style=discord.ButtonStyle.primary)
     async def mid(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.set(interaction, 3, 30, -30)
+        await self.set_game(interaction, 3, 30, -30)
 
     @discord.ui.button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
     async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.set(interaction, 6, 120, -60)
+        await self.set_game(interaction, 6, 120, -60)
 
-    # ---------------- SET DIFFICULTY ----------------
+    # ---------------- SET GAME ----------------
 
-    async def set(self, interaction: discord.Interaction, b, r, p):
+    async def set_game(self, interaction: discord.Interaction, b, r, p):
         if interaction.user != self.user:
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
@@ -326,9 +324,10 @@ class RouletteView(discord.ui.View):
         self.reward = r
         self.penalty = p
 
+        # убираем кнопки сложности
         self.clear_items()
 
-        # добавляем кнопки ИГРЫ прямо тут
+        # добавляем игровые кнопки
         self.add_item(self.ShootButton(self))
         self.add_item(self.PassButton(self))
 
@@ -337,7 +336,7 @@ class RouletteView(discord.ui.View):
             view=self
         )
 
-    # ---------------- SHOOT BUTTON ----------------
+    # ---------------- SHOOT ----------------
 
     class ShootButton(discord.ui.Button):
         def __init__(self, parent):
@@ -382,7 +381,7 @@ class RouletteView(discord.ui.View):
                 view=None
             )
 
-    # ---------------- PASS BUTTON ----------------
+    # ---------------- PASS ----------------
 
     class PassButton(discord.ui.Button):
         def __init__(self, parent):
