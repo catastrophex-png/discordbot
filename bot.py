@@ -346,47 +346,56 @@ class Shoot(discord.ui.Button):
         roll = random.randint(1, 7)
         data = await get_user(interaction.user.id)
 
-        start_xp = data["xp"]
-        start_level = data["level"]
+        old_xp = data["xp"]
+        old_level = data["level"]
 
         # результат
         if roll <= self.v.bullets:
             delta = self.v.penalty
-            text = "💀 БАХ! Ты проиграл. Сам знал на что идёшь"
+            text = "💀 БАХ! Ты проиграл, сам знал на что идёшью"
         else:
             delta = self.v.reward
             text = "😮 ахуеть ты выжил"
 
-        data["xp"] += delta
+        # применяем XP, но НЕ даём уйти в минус
+        new_xp = max(0, data["xp"] + delta)
+        data["xp"] = new_xp
+
+        # пересчёт уровней
+        leveled_up = False
+        leveled_down = False
+
+        while data["xp"] >= xp_needed(data["level"]):
+            data["xp"] -= xp_needed(data["level"])
+            data["level"] += 1
+            leveled_up = True
+
+        while data["level"] > 1 and data["xp"] < 0:
+            data["level"] -= 1
+            data["xp"] += xp_needed(data["level"])
+            leveled_down = True
 
         await update_user(interaction.user.id, data["xp"], data["level"])
 
-        # итоговая инфа
+        level_change = ""
+        if data["level"] > old_level:
+            level_change = f"📈 +{data['level'] - old_level} уровень"
+        elif data["level"] < old_level:
+            level_change = f"📉 -{old_level - data['level']} уровень"
+        else:
+            level_change = "➖ уровень без изменений"
+
         result_text = (
             f"🎰 **Игра окончена**\n\n"
             f"👤 Игрок: {interaction.user.mention}\n"
             f"📊 Изменение XP: {delta:+}\n"
-            f"⭐ Уровень: {start_level} → {data['level']}\n"
+            f"{level_change}\n"
+            f"⭐ Уровень: {old_level} → {data['level']}\n"
             f"🏁 Итог XP: {data['xp']}/{xp_needed(data['level'])}\n\n"
             f"{text}"
         )
 
         await interaction.message.edit(content=result_text, view=None)
-        self.v.stop()
-
-
-class Pass(discord.ui.Button):
-    def __init__(self, view: RouletteView):
-        super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
-        self.v = view
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user != self.v.user:
-            return await interaction.response.send_message("⛔ руки нах убрал", ephemeral=True)
-
-        await interaction.response.defer()
-
-        await interaction.message.edit(content="🚪 поживи пока", view=None)
         self.v.stop()
 # ---------------- TTT ----------------
 
