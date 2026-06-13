@@ -297,27 +297,26 @@ class RouletteView(discord.ui.View):
     def __init__(self, user: discord.Member):
         super().__init__(timeout=60)
         self.user = user
+
         self.bullets = 0
         self.reward = 0
         self.penalty = 0
 
     @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
-    async def easy(self, interaction, button):
+    async def easy(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 1, 10, -10)
 
     @discord.ui.button(label="🟠 Средний", style=discord.ButtonStyle.primary)
-    async def mid(self, interaction, button):
+    async def mid(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 3, 30, -30)
 
     @discord.ui.button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
-    async def hard(self, interaction, button):
+    async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.set(interaction, 6, 120, -60)
 
-    async def set(self, interaction, b, r, p):
+    async def set(self, interaction: discord.Interaction, b, r, p):
         if interaction.user != self.user:
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
-
-        await interaction.response.defer()  # 💥 ВАЖНО
 
         self.bullets = b
         self.reward = r
@@ -327,10 +326,52 @@ class RouletteView(discord.ui.View):
         self.add_item(Shoot(self))
         self.add_item(Pass(self))
 
-        await interaction.message.edit(
+        await interaction.response.edit_message(
             content="🔫 Барабан заряжен.\nЧто делаем?",
             view=self
-    )
+        )
+
+
+class Shoot(discord.ui.Button):
+    def __init__(self, view: RouletteView):
+        super().__init__(label="💥 Выстрел", style=discord.ButtonStyle.danger)
+        self.v = view
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.v.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+
+        await interaction.response.defer()
+
+        roll = random.randint(1, 7)
+        data = await get_user(interaction.user.id)
+
+        if roll <= self.v.bullets:
+            data["xp"] += self.v.penalty
+            text = "💀 БАХ!"
+        else:
+            data["xp"] += self.v.reward
+            text = "😮 выжил"
+
+        await update_user(interaction.user.id, data["xp"], data["level"])
+
+        await interaction.message.edit(content=text, view=None)
+        self.v.stop()
+
+
+class Pass(discord.ui.Button):
+    def __init__(self, view: RouletteView):
+        super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+        self.v = view
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.v.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+
+        await interaction.response.defer()
+
+        await interaction.message.edit(content="🚪 живёшь ещё день", view=None)
+        self.v.stop()
 # ---------------- TTT ----------------
 
 WIN = [
