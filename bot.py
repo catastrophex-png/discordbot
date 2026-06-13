@@ -293,25 +293,26 @@ async def check_afk():
 # ------------- LEVEL SYSTEM HELPERS -------------
 
 def recalc_level(xp, level):
-    # повышение уровня
     while xp >= xp_needed(level):
         xp -= xp_needed(level)
         level += 1
 
-    # понижение уровня
     while level > 1 and xp < 0:
         level -= 1
         xp += xp_needed(level)
 
-    xp = max(0, xp)
+    if xp < 0:
+        xp = 0
+
     return xp, level
     
-# ------------- Roulette --------------
+# ------------- ROULETTE VIEW -------------
 
 class RouletteView(discord.ui.View):
     def __init__(self, user: discord.Member):
         super().__init__(timeout=60)
         self.user = user
+
         self.bullets = 0
         self.reward = 0
         self.penalty = 0
@@ -328,13 +329,13 @@ class RouletteView(discord.ui.View):
     async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 6, 120, -60)
 
-    async def start(self, interaction: discord.Interaction, b, r, p):
+    async def start(self, interaction: discord.Interaction, bullets, reward, penalty):
         if interaction.user != self.user:
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-        self.bullets = b
-        self.reward = r
-        self.penalty = p
+        self.bullets = bullets
+        self.reward = reward
+        self.penalty = penalty
 
         self.clear_items()
         self.add_item(ShootButton(self))
@@ -345,7 +346,8 @@ class RouletteView(discord.ui.View):
             view=self
         )
 
-    # ---------------- SHOOT ----------------
+
+# ------------- SHOOT BUTTON -------------
 
 class ShootButton(discord.ui.Button):
     def __init__(self, parent):
@@ -363,12 +365,13 @@ class ShootButton(discord.ui.Button):
 
         if roll <= self.parent.bullets:
             delta = self.parent.penalty
-            result_text = "💀 БАХ!"
+            result = "💀 БАХ! Ты проиграл"
         else:
             delta = self.parent.reward
-            result_text = "😮 выжил"
+            result = "😮 Ты выжил"
 
         data["xp"] += delta
+
         data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
 
         await update_user(interaction.user.id, data["xp"], data["level"])
@@ -380,20 +383,21 @@ class ShootButton(discord.ui.Button):
         else:
             lvl_text = "➖ уровень без изменений"
 
-        await interaction.message.edit(
+        await interaction.response.edit_message(
             content=(
                 f"🎰 **Игра окончена**\n\n"
                 f"👤 {interaction.user.mention}\n"
                 f"📊 XP: {delta:+}\n"
                 f"{lvl_text}\n"
-                f"⭐ {old_level} → {data['level']}\n"
-                f"🏁 {data['xp']}/{xp_needed(data['level'])}\n\n"
-                f"{result_text}"
+                f"⭐ Уровень: {old_level} → {data['level']}\n"
+                f"🏁 XP: {data['xp']}/{xp_needed(data['level'])}\n\n"
+                f"{result}"
             ),
             view=None
         )
 
-    # ---------------- PASS ----------------
+
+# ------------- PASS BUTTON -------------
 
 class PassButton(discord.ui.Button):
     def __init__(self, parent):
@@ -405,10 +409,9 @@ class PassButton(discord.ui.Button):
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
         await interaction.response.edit_message(
-            content="🚪 ты вышел из игры",
+            content="🚪 Ты вышел из игры. Ничего не потеряно.",
             view=None
         )
-
 # ---------------- TTT ----------------
 
 WIN = [
