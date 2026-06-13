@@ -346,8 +346,8 @@ class Shoot(discord.ui.Button):
         roll = random.randint(1, 7)
         data = await get_user(interaction.user.id)
 
-        old_xp = data["xp"]
         old_level = data["level"]
+        old_xp = data["xp"]
 
         # результат
         if roll <= self.v.bullets:
@@ -355,29 +355,19 @@ class Shoot(discord.ui.Button):
             text = "💀 БАХ! Ты проиграл, сам знал на что идёшью"
         else:
             delta = self.v.reward
-            text = "😮 ахуеть ты выжил"
+            result_text = "😮 ахуеть ты выжил"
 
         # применяем XP, но НЕ даём уйти в минус
-        new_xp = max(0, data["xp"] + delta)
-        data["xp"] = new_xp
+        data["xp"] = max(0, data["xp"] + delta)
 
         # пересчёт уровней
-        leveled_up = False
-        leveled_down = False
-
         while data["xp"] >= xp_needed(data["level"]):
             data["xp"] -= xp_needed(data["level"])
             data["level"] += 1
-            leveled_up = True
-
-        while data["level"] > 1 and data["xp"] < 0:
-            data["level"] -= 1
-            data["xp"] += xp_needed(data["level"])
-            leveled_down = True
 
         await update_user(interaction.user.id, data["xp"], data["level"])
 
-        level_change = ""
+         # изменение уровня
         if data["level"] > old_level:
             level_change = f"📈 +{data['level'] - old_level} уровень"
         elif data["level"] < old_level:
@@ -396,6 +386,23 @@ class Shoot(discord.ui.Button):
         )
 
         await interaction.message.edit(content=result_text, view=None)
+        self.v.stop()
+
+class Pass(discord.ui.Button):
+    def __init__(self, view: RouletteView):
+        super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+        self.v = view
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.v.user:
+            return await interaction.response.send_message("⛔ руки нах убрал", ephemeral=True)
+
+        await interaction.response.defer()
+
+        await interaction.message.edit(
+            content="🚪 ты решил не рисковать. Живёшь ещё день.",
+            view=None
+        )
         self.v.stop()
 # ---------------- TTT ----------------
 
