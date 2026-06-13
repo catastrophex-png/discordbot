@@ -346,16 +346,32 @@ class Shoot(discord.ui.Button):
         roll = random.randint(1, 7)
         data = await get_user(interaction.user.id)
 
+        start_xp = data["xp"]
+        start_level = data["level"]
+
+        # результат
         if roll <= self.v.bullets:
-            data["xp"] += self.v.penalty
-            text = "💀 БАХ!"
+            delta = self.v.penalty
+            text = "💀 БАХ! Ты проиграл"
         else:
-            data["xp"] += self.v.reward
+            delta = self.v.reward
             text = "😮 выжил"
+
+        data["xp"] += delta
 
         await update_user(interaction.user.id, data["xp"], data["level"])
 
-        await interaction.message.edit(content=text, view=None)
+        # итоговая инфа
+        result_text = (
+            f"🎰 **Игра окончена**\n\n"
+            f"👤 Игрок: {interaction.user.mention}\n"
+            f"📊 Изменение XP: {delta:+}\n"
+            f"⭐ Уровень: {start_level} → {data['level']}\n"
+            f"🏁 Итог XP: {data['xp']}/{xp_needed(data['level'])}\n\n"
+            f"{text}"
+        )
+
+        await interaction.message.edit(content=result_text, view=None)
         self.v.stop()
 
 
