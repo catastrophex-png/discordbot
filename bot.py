@@ -317,6 +317,8 @@ class RouletteView(discord.ui.View):
         if interaction.user != self.user:
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
+        await interaction.response.defer()  # 💥 ВАЖНО
+
         self.bullets = b
         self.reward = r
         self.penalty = p
@@ -325,10 +327,10 @@ class RouletteView(discord.ui.View):
         self.add_item(Shoot(self))
         self.add_item(Pass(self))
 
-        await interaction.response.edit_message(
+        await interaction.message.edit(
             content="🔫 Барабан заряжен.\nЧто делаем?",
             view=self
-        )
+    )
 # ---------------- TTT ----------------
 
 WIN = [
