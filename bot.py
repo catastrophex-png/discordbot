@@ -318,8 +318,8 @@ class RouletteView(discord.ui.View):
         await self.set(interaction, 6, 120, -60)
 
     async def set(self, interaction, b, r, p):
-    if interaction.user != self.user:
-        return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+        if interaction.user != self.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
     self.bullets = b
     self.reward = r
