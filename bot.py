@@ -316,8 +316,6 @@ class RouletteView(discord.ui.View):
         self.reward = 0
         self.penalty = 0
 
-    # ---------------- DIFFICULTY ----------------
-
     @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
     async def easy(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 1, 10, -10)
@@ -330,8 +328,6 @@ class RouletteView(discord.ui.View):
     async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 6, 120, -60)
 
-    # ---------------- START GAME ----------------
-
     async def start(self, interaction: discord.Interaction, b, r, p):
         if interaction.user != self.user:
             return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
@@ -341,8 +337,8 @@ class RouletteView(discord.ui.View):
         self.penalty = p
 
         self.clear_items()
-        self.add_item(self.Shoot(self))
-        self.add_item(self.Pass(self))
+        self.add_item(ShootButton(self))
+        self.add_item(PassButton(self))
 
         await interaction.response.edit_message(
             content="🔫 Барабан заряжен. Выбирай действие:",
@@ -351,76 +347,67 @@ class RouletteView(discord.ui.View):
 
     # ---------------- SHOOT ----------------
 
-   class Shoot(discord.ui.Button):
-        def __init__(self, parent):
-            super().__init__(label="💥 Выстрел", style=discord.ButtonStyle.danger)
-            self.parent = parent
+class ShootButton(discord.ui.Button):
+    def __init__(self, parent):
+        super().__init__(label="💥 Выстрел", style=discord.ButtonStyle.danger)
+        self.parent = parent
 
-        async def callback(self, interaction: discord.Interaction):
-            if interaction.user != self.parent.user:
-                return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.parent.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-            await interaction.response.defer()
+        roll = random.randint(1, 7)
+        data = await get_user(interaction.user.id)
 
-            roll = random.randint(1, 7)
-            data = await get_user(interaction.user.id)
+        old_level = data["level"]
 
-            old_level = data["level"]
+        if roll <= self.parent.bullets:
+            delta = self.parent.penalty
+            result_text = "💀 БАХ!"
+        else:
+            delta = self.parent.reward
+            result_text = "😮 выжил"
 
-            # результат
-            if roll <= self.parent.bullets:
-                delta = self.parent.penalty
-                result = "💀 БАХ!"
-            else:
-                delta = self.parent.reward
-                result = "😮 выжил"
-                
-            data["xp"] += delta
-            data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
+        data["xp"] += delta
+        data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
 
-            await update_user(interaction.user.id, data["xp"], data["level"])
+        await update_user(interaction.user.id, data["xp"], data["level"])
 
-            # уровень изменение
-            if data["level"] > old_level:
-                lvl_text = f"📈 +{data['level'] - old_level} уровень"
-            elif data["level"] < old_level:
-                lvl_text = f"📉 -{old_level - data['level']} уровень"
-            else:
-                lvl_text = "➖ уровень без изменений"
+        if data["level"] > old_level:
+            lvl_text = f"📈 +{data['level'] - old_level} уровень"
+        elif data["level"] < old_level:
+            lvl_text = f"📉 -{old_level - data['level']} уровень"
+        else:
+            lvl_text = "➖ уровень без изменений"
 
-            await interaction.message.edit(
-                content=(
-                    f"🎰 **Игра окончена**\n\n"
-                    f"👤 {interaction.user.mention}\n"
-                    f"📊 XP: {delta:+}\n"
-                    f"{lvl_text}\n"
-                    f"⭐ {old_level} → {data['level']}\n"
-                    f"🏁 {data['xp']}/{xp_needed(data['level'])}\n\n"
-                    f"{result_text}"
-                ),
-                view=None
-            )
+        await interaction.message.edit(
+            content=(
+                f"🎰 **Игра окончена**\n\n"
+                f"👤 {interaction.user.mention}\n"
+                f"📊 XP: {delta:+}\n"
+                f"{lvl_text}\n"
+                f"⭐ {old_level} → {data['level']}\n"
+                f"🏁 {data['xp']}/{xp_needed(data['level'])}\n\n"
+                f"{result_text}"
+            ),
+            view=None
+        )
 
     # ---------------- PASS ----------------
 
-    class Pass(discord.ui.Button):
-        def __init__(self, parent):
-            super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
-            self.parent = parent
+class PassButton(discord.ui.Button):
+    def __init__(self, parent):
+        super().__init__(label="🚪 Пас", style=discord.ButtonStyle.secondary)
+        self.parent = parent
 
-        async def callback(self, interaction: discord.Interaction):
-            if interaction.user != self.parent.user:
-                return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.parent.user:
+            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-            await interaction.response.defer()
-
-            await interaction.message.edit(
-                content="🚪 ты вышел из игры",
-                view=None
-            )
-            
-        button.callback = callback
-        return button
+        await interaction.response.edit_message(
+            content="🚪 ты вышел из игры",
+            view=None
+        )
 
 # ---------------- TTT ----------------
 
