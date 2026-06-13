@@ -403,7 +403,7 @@ class TTT(discord.ui.View):
                 new_view.board = self.board
                 new_view.turn = self.turn
 
-                await interaction.response.edit_message(
+                await interaction.message.edit(
                     content=f"🎮 Ход: {self.players[self.turn].mention}",
                     view=new_view
                 )
