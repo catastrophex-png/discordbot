@@ -209,46 +209,45 @@ async def update_roles(member, level):
     await member.add_roles(role)
 
 async def level_up(member, old_level, data):
-    channel = bot.get_channel(LEVEL_CHANNEL_ID)
-    if not channel:
-        return False
+    try:
+        channel = await bot.fetch_channel(LEVEL_CHANNEL_ID)
 
-    need = xp_needed(data["level"])
-    progress = bar(data["xp"], need)
+        need = xp_needed(data["level"])
+        progress = bar(data["xp"], need)
 
-    embed = discord.Embed(
-        title="🎉 Level Up!",
-        description=f"У {member.mention} новый уровень. Пиздец 🔥",
-        color=discord.Color.gold()
-    )
-    embed.add_field(
-        name="✨🔥🎁 Уровень",
-        value=f"`{old_level}` ➜ `{data['level']}`",
-        inline=False
-    )
+        embed = discord.Embed(
+            title="🎉 Level Up!",
+            description=f"У {member.mention} новый уровень. Пиздец 🔥",
+            color=discord.Color.gold()
+        )
+        embed.add_field(
+            name="✨🔥🎁 Уровень",
+            value=f"`{old_level}` ➜ `{data['level']}`",
+            inline=False
+        )
 
-    embed.add_field(
-        name="🏆🏅🃏 Титу",
-        value=get_title(data["level"]),
-        inline=False
-    )
+        embed.add_field(
+            name="🏆🏅🃏 Титу",
+            value=get_title(data["level"]),
+            inline=False
+        )
 
-    embed.add_field(
-        name="📒📝💼 XP",
-        value=f"{data['xp']}/{need}",
-        inline=False
-    )
+        embed.add_field(
+            name="📒📝💼 XP",
+            value=f"{data['xp']}/{need}",
+            inline=False
+        )
 
-    embed.add_field(
-        name="📈📈🗿 Прогресс",
-        value=progress,
-        inline=False
-    )
+        embed.add_field(
+            name="📈📈🗿 Прогресс",
+            value=progress,
+            inline=False
+        )
 
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text="Иди нахуй и продолжай активность💪")
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text="Иди нахуй и продолжай активность💪")
 
-    await channel.send(embed=embed)
+        await channel.send(embed=embed)
     return True
 # ---------------- EVENTS ----------------
 
