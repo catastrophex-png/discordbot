@@ -21,6 +21,7 @@ LEVEL_CHANNEL_ID = 1510080367892238336
 
 voice_activity = {}
 voice_last_active = {}
+voice_join_time = {}
 afk_members = set()
 
 AFK_TIMEOUT = 900  # 15 минут
@@ -236,6 +237,24 @@ async def level_up(member, data):
 # ---------------- EVENTS ----------------
 
 @bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    xp_gain = random.randint(5, 15)
+
+    data = await get_user(message.author.id)
+
+    data["xp"] += xp_gain
+    data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
+
+    await update_user(message.author.id, data["xp"], data["level"])
+
+    await update_roles(message.author, data["level"])
+
+    await bot.process_commands(message)
+    
+@bot.event
 async def on_voice_state_update(member, before, after):
     if member.bot:
         return
@@ -243,14 +262,27 @@ async def on_voice_state_update(member, before, after):
     uid = member.id
     now = asyncio.get_event_loop().time()
 
-    if after.channel:
-        voice_last_active[uid] = now
+    # вошёл в голос
+    if before.channel is None and after.channel is not None:
+        voice_join_time[uid] = now
 
-        if before.channel and (
-            before.self_mute != after.self_mute or
-            before.self_deaf != after.self_deaf
-        ):
-            voice_last_active[uid] = now
+    # вышел из голосового
+    elif before.channel is not None and after.channel is None:
+        if uid in voice_join_time:
+            duration = now - voice_join_time[uid]
+            del voice_join_time[uid]
+
+            xp_gain = int(duration // 60) * 8
+
+            if xp_gain > 0:
+                data = await get_user(uid)
+
+                data["xp"] += xp_gain
+                data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
+
+                await update_user(uid, data["xp"], data["level"])
+
+                await update_roles(member, data["level"])
 
 # ---------------- AFK LOOP ----------------
 
@@ -293,15 +325,16 @@ async def check_afk():
 # ------------- LEVEL SYSTEM HELPERS -------------
 
 def recalc_level(xp, level):
+
     while xp >= xp_needed(level):
         xp -= xp_needed(level)
         level += 1
 
-    while level > 1 and xp < 0:
+    while xp < 0 and level > 1:
         level -= 1
         xp += xp_needed(level)
 
-    if xp < 0:
+    if level == 1 and xp < 0:
         xp = 0
 
     return xp, level
@@ -372,11 +405,17 @@ class RouletteView(discord.ui.View):
                 delta = self.reward
                 result = "😮 выжил"
 
-            data["xp"] = max(0, data["xp"] + delta)
+    data["xp"] += delta
 
-            while data["xp"] >= xp_needed(data["level"]):
-                data["xp"] -= xp_needed(data["level"])
-                data["level"] += 1
+    data["xp"], data["level"] = recalc_level(
+            data["xp"],
+            data["level"]
+    )
+
+    await update_roles(
+        interaction.user,
+        data["level"]
+    )
 
             await update_user(interaction.user.id, data["xp"], data["level"])
 
