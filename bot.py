@@ -220,6 +220,7 @@ async def level_up(member, old_level, data):
             description=f"У {member.mention} новый уровень. Пиздец 🔥",
             color=discord.Color.gold()
         )
+
         embed.add_field(
             name="✨🔥🎁 Уровень",
             value=f"`{old_level}` ➜ `{data['level']}`",
@@ -227,7 +228,7 @@ async def level_up(member, old_level, data):
         )
 
         embed.add_field(
-            name="🏆🏅🃏 Титу",
+            name="🏆🏅🃏 Титул",
             value=get_title(data["level"]),
             inline=False
         )
@@ -245,10 +246,16 @@ async def level_up(member, old_level, data):
         )
 
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text="Иди нахуй и продолжай активность💪")
+        embed.set_footer(text="Иди нахуй и продолжай активность 💪")
 
         await channel.send(embed=embed)
-    return True
+
+        return True   # ✅ внутри try
+
+    except Exception as e:
+        print("level_up error:", e)
+        return False
+        
 # ---------------- EVENTS ----------------
 
 @bot.event
