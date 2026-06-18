@@ -287,14 +287,18 @@ async def on_voice_state_update(member, before, after):
 
     # вышел из голосового
     elif before.channel is not None and after.channel is None:
-        if uid in voice_join_time:
-            duration = now - voice_join_time[uid]
-            del voice_join_time[uid]
+        if uid not in voice_join_time:
+            return
 
-            xp_gain = int(duration // 60) * 8
+        duration = now - voice_join_time[uid]
+        del voice_join_time[uid]
 
-            if xp_gain > 0:
-                data = await get_user(uid)
+        xp_gain = int(duration // 60) * 8
+
+        if xp_gain <= 0:
+            return
+
+        data = await get_user(uid)
 
         old_level = data["level"]
 
@@ -302,12 +306,10 @@ async def on_voice_state_update(member, before, after):
         data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
 
         await update_user(uid, data["xp"], data["level"])
-
         await update_roles(member, data["level"])
 
         if data["level"] > old_level:
             await level_up(member, data)
-
 # ---------------- AFK LOOP ----------------
 
 @tasks.loop(minutes=1)
