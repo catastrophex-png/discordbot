@@ -529,7 +529,7 @@ class TTT(discord.ui.View):
             btn.callback = callback
             self.add_item(btn)
 
-@bot.command()
+@bot.command(name="кн")
 async def ttt(ctx, opponent: discord.Member):
     await ctx.send(
         f"🎮 {ctx.author.mention} vs {opponent.mention}",
@@ -538,11 +538,11 @@ async def ttt(ctx, opponent: discord.Member):
 
 # ---------------- COMMANDS ----------------
 
-@bot.command()
+@bot.command(name="пинг")
 async def ping(ctx):
-    await ctx.send("pong")
+    await ctx.send("понг")
 
-@bot.command()
+@bot.command(name="ранг")
 async def rank(ctx, member: discord.Member = None):
     member = member or ctx.author
     data = await get_user(member.id)
