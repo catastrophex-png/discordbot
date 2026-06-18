@@ -275,7 +275,7 @@ async def on_message(message):
     await update_roles(message.author, data["level"])
 
     if data["level"] > old_level:
-        await level_up(message.author, data)
+        await level_up(message.author, old_level, data)
     
     await bot.process_commands(message)
     
@@ -314,8 +314,8 @@ async def on_voice_state_update(member, before, after):
         await update_user(uid, data["xp"], data["level"])
         await update_roles(member, data["level"])
 
-        if data["level"] > old_level:
-            await level_up(member, data)
+    if data["level"] > old_level:
+        await level_up(member, old_level, data)
 # ---------------- AFK LOOP ----------------
 
 @tasks.loop(minutes=1)
