@@ -209,28 +209,15 @@ async def update_roles(member, level):
     await member.add_roles(role)
 
 async def level_up(member, data):
-    leveled = False
-
     old_level = data["level"]
 
-    # пересчёт (на всякий случай)
-    while data["xp"] >= xp_needed(data["level"]):
-        data["xp"] -= xp_needed(data["level"])
-        data["level"] += 1
-        leveled = True
-
-    if not leveled:
-        return False
-
-    await update_roles(member, data["level"])
-
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
-
     if not channel:
         return False
 
     need = xp_needed(data["level"])
     progress = bar(data["xp"], need)
+
 
     embed = discord.Embed(
         title="🎉 Level Up!",
