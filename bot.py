@@ -36,44 +36,44 @@ db_pool = None
 # ---------------- ORACLE: БРОДЯГА ----------------
 
 BRODYAGA_RESPONSES = [
-    "🔮 Бродяга молчит… но туман уже дал ответ.",
+    "🔮 Бродяга молчит…",
     "✨ Да. Но ты поймёшь это слишком поздно.",
     "⚠️ Нет. И судьба уже закрыла эту дверь.",
     "🌙 Возможно… если не свернёшь с пути.",
     "🕯️ Ответ спрятан в том, что ты игнорируешь.",
     "🔥 Да, но цена тебе не понравится.",
-    "🌫️ Сейчас — пустота. Вернись позже.",
+    "🌫️ Вернись позже.",
     "👁️ Я вижу движение… но не вижу тебя в конце пути.",
     "💀 Нет. И ты это уже чувствуешь.",
     "🌟 Да. Без сомнений и без жалости.",
     "🌀 Всё возможно, но ты сам мешаешь исходу.",
-    "📿 Бродяга усмехается… ответ очевиден, если бы ты смотрел.",
-    "🔮 Бродяга смотрит в пустоту… и просит тебя не отвлекать его от смысла жизни.",
+    "📿 Ответ очевиден, если бы ты смотрел.",
+    "🔮 Не отвлекай меня от смысла жизни.",
     "✨ Да. Но только если ты перестанешь делать то, что делаешь сейчас.",
     "⚠️ Нет. Даже чайник вскипает быстрее, чем это случится.",
-    "🌙 Возможно… но Вселенная пока занята более интересными людьми.",
-    "🕯️ Ответ спрятан. Я тоже не знаю где. И это пугает.",
+    "🌙 Вселенная пока занята более интересными людьми.",
+    "🕯️ Ответ спрятан. Я тоже не знаю где.",
     "🔥 Да, но потом ты пожалеешь и скажешь 'почему я спросил'.",
     "🌫️ Сейчас будущее занято. Попробуй позже, оно в отпуске.",
     "👁️ Я вижу… что ты снова задаёшь странные вопросы.",
     "💀 Нет. Даже если очень попросишь.",
     "🌟 Да. Но это подозрительно и я бы тебе не доверял.",
     "🌀 Всё возможно, но ты выбрал самый странный таймлайн.",
-    "📿 Бродяга вздыхает. Он видел лучше вопросы в микроволновке.",
-    "🍺 Будущее сейчас недоступно — оно на перерыве.",
+    "📿 *Бродяга вздыхает* ",
+    "🍺 Будущее сейчас недоступно.",
     "🐌 Да… но улитка уже успела бы три раза дойти быстрее.",
-    "🧠 Ты уже знаешь ответ. Просто тебе лень признать это.",
+    "🧠 Ты уже знаешь ответ.",
     "🚪 Ответ есть. Но он ушёл и закрыл за собой дверь.",
     "🔮 Бродяга долго думает… и решает, что ты справишься сам.",
     "✨ Да. Но только если не будешь мешать вселенной своими вопросами.",
     "⚠️ Нет. И честно, это даже к лучшему для всех.",
-    "🌙 Возможно… но вероятность как найти нормальный Wi-Fi в лесу.",
-    "🕯️ Ответ есть, но он слишком ленив, чтобы появиться.",
+    "🌙 Возможно…",
+    "🕯️ Мне впадлу.",
     "🔥 Да, но потом ты будешь делать вид, что это была не твоя идея.",
-    "🌫️ Будущее сейчас занято — оно спорит с прошлым.",
-    "👁️ Я вижу… как ты снова спрашиваешь что-то странное.",
-    "💀 Нет. И не задавай этот вопрос ещё раз, мне уже стыдно за тебя.",
-    "🌀 Всё возможно… но ты выбрал самый сомнительный вариант из всех.",
+    "🌫️ Тебя игнорируют.",
+    "👁️ Ты снова спрашиваешь что-то странное.",
+    "💀 Не задавай этот вопрос мне стыдно за тебя.",
+    "🌀 Всё возможно…",
     "💀 Нет.",
     "🔥 Да. ",
     
@@ -225,7 +225,7 @@ async def level_up(member, data):
 
     if channel:
         await channel.send(
-            f"🎉 Новый уровень! Иди нахуй \n\n"
+            f"🎉 Новый уровень, я тебя поздравляю и ИДИ НАХУЙ <3 \n\n"
             f"👤 {member.mention}\n"
             f"⭐ Уровень: {data['level']}\n"
             f"🏅 Роль: {get_title(data['level'])}\n"
@@ -245,13 +245,17 @@ async def on_message(message):
 
     data = await get_user(message.author.id)
 
+    old_level = data["level"]
+
     data["xp"] += xp_gain
     data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
 
     await update_user(message.author.id, data["xp"], data["level"])
-
     await update_roles(message.author, data["level"])
 
+    if data["level"] > old_level:
+        await level_up(message.author, data)
+    
     await bot.process_commands(message)
     
 @bot.event
@@ -277,12 +281,17 @@ async def on_voice_state_update(member, before, after):
             if xp_gain > 0:
                 data = await get_user(uid)
 
-                data["xp"] += xp_gain
-                data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
+        old_level = data["level"]
 
-                await update_user(uid, data["xp"], data["level"])
+        data["xp"] += xp_gain
+        data["xp"], data["level"] = recalc_level(data["xp"], data["level"])
 
-                await update_roles(member, data["level"])
+        await update_user(uid, data["xp"], data["level"])
+
+        await update_roles(member, data["level"])
+
+        if data["level"] > old_level:
+            await level_up(member, data)
 
 # ---------------- AFK LOOP ----------------
 
@@ -322,6 +331,7 @@ async def check_afk():
                         voice_last_active[member.id] = now
                     except:
                         pass
+                        
 # ------------- LEVEL SYSTEM HELPERS -------------
 
 def recalc_level(xp, level):
@@ -351,15 +361,15 @@ class RouletteView(discord.ui.View):
 
     # ---------------- DIFFICULTY ----------------
 
-    @discord.ui.button(label="🟢 Лёгкий", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🟢 Изи", style=discord.ButtonStyle.success)
     async def easy(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 1, 10, -10)
 
-    @discord.ui.button(label="🟠 Средний", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="🟠 Мид", style=discord.ButtonStyle.primary)
     async def mid(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 3, 30, -30)
 
-    @discord.ui.button(label="🔴 Безумец", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="🔴 Безумие", style=discord.ButtonStyle.danger)
     async def hard(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.start(interaction, 6, 120, -60)
 
@@ -367,7 +377,7 @@ class RouletteView(discord.ui.View):
 
     async def start(self, interaction: discord.Interaction, b, r, p):
         if interaction.user != self.user:
-            return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+            return await interaction.response.send_message("⛔ руки убрал", ephemeral=True)
 
         self.bullets = b
         self.reward = r
@@ -378,7 +388,7 @@ class RouletteView(discord.ui.View):
         self.add_item(self.pass_button())
 
         await interaction.response.edit_message(
-            content="🔫 Барабан заряжен. Выбирай действие:",
+            content="🔫 Барабан заряжен. Выбирай :",
             view=self
         )
 
@@ -389,7 +399,7 @@ class RouletteView(discord.ui.View):
 
         async def callback(interaction: discord.Interaction):
             if interaction.user != self.user:
-                return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+                return await interaction.response.send_message("⛔ руки убрал", ephemeral=True)
 
             await interaction.response.defer()
 
@@ -400,10 +410,10 @@ class RouletteView(discord.ui.View):
 
             if roll <= self.bullets:
                 delta = self.penalty
-                result = "💀 БАХ! проиграл"
+                result = "💀 БАХ! Ты проиграл, судьба не была к тебе благосклонна."
             else:
                 delta = self.reward
-                result = "😮 выжил"
+                result = "😮 Ебать, ты выжил"
 
             data["xp"] += delta
 
@@ -438,12 +448,12 @@ class RouletteView(discord.ui.View):
 
         async def callback(interaction: discord.Interaction):
             if interaction.user != self.user:
-                return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+                return await interaction.response.send_message("⛔ руки убрал", ephemeral=True)
 
             await interaction.response.defer()
 
             await interaction.message.edit(
-                content="🚪 ты вышел из игры. Живёшь дальше.",
+                content="🚪 Ты вышел из игры и живёшь дальше, ссыкло",
                 view=None
             )
 
@@ -565,14 +575,14 @@ async def brodyaga(ctx, *, question=None):
     answer = random.choice(BRODYAGA_RESPONSES)
 
     await ctx.send(
-        f"🔮 **Бродяга слышит тебя:** {question}\n\n"
+        f"🔮 **Бродяга предсказывает:** {question}\n\n"
         f"{answer}"
     )
 
 @bot.command(name="фортуна")
 async def fortuna(ctx):
     choices = []
-    await ctx.send("🔮 Вводи варианты, потом напиши: готово")
+    await ctx.send("🔮 Вводи варианты (каждый в своём сообщении), потом напиши: готово")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
@@ -584,7 +594,7 @@ async def fortuna(ctx):
         choices.append(msg.content)
 
     if not choices:
-        return await ctx.send("❌ нет вариантов")
+        return await ctx.send("❌ нет вариков")
 
     await ctx.send(f"🔮 {random.choice(choices)}")
 
@@ -593,11 +603,11 @@ async def рулетка(ctx):
     view = RouletteView(ctx.author)
 
     await ctx.send(
-        "🔫 Русская рулетка\n\n"
+        "🔫 Рулетка\n\n"
         "Выбери уровень риска:\n\n"
-        "🟢 Лёгкий — 1 из 7 (+10 / -10)\n"
-        "🟠 Средний — 3 из 7 (+30 / -30)\n"
-        "🔴 Безумец — 6 из 7 (+120 / -60)\n",
+        "🟢 Изи — 1 из 7 (+10 / -10)\n"
+        "🟠 Мид — 3 из 7 (+30 / -30)\n"
+        "🔴 Безумие — 6 из 7 (+120 / -60)\n",
         view=view
     )
 
