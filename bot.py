@@ -211,6 +211,9 @@ async def update_roles(member, level):
 async def level_up(member, data):
     leveled = False
 
+    old_level = data["level"]
+
+    # пересчёт (на всякий случай)
     while data["xp"] >= xp_needed(data["level"]):
         data["xp"] -= xp_needed(data["level"])
         data["level"] += 1
@@ -223,15 +226,27 @@ async def level_up(member, data):
 
     channel = bot.get_channel(LEVEL_CHANNEL_ID)
 
-    if channel:
-        await channel.send(
-            f"🎉 Новый уровень, я тебя поздравляю и ИДИ НАХУЙ <3 \n\n"
-            f"👤 {member.mention}\n"
-            f"⭐ Уровень: {data['level']}\n"
-            f"🏅 Роль: {get_title(data['level'])}\n"
-            f"{bar(data['xp'], xp_needed(data['level']))} "
-            f"{data['xp']}/{xp_needed(data['level'])}"
-        )
+    if not channel:
+        return False
+
+    need = xp_needed(data["level"])
+    progress = bar(data["xp"], need)
+
+    embed = discord.Embed(
+        title="🎉 Level Up!",
+        description=f"У {member.mention} новый уровень. Пиздец 🔥",
+        color=discord.Color.gold()
+    )
+
+    embed.add_field(name="✨🔥🎁 Уровень", value=f"`{old_level}` ➜ `{data['level']}`", inline=False)
+    embed.add_field(name="🏆🏅🃏 Титул", value=get_title(data["level"]), inline=False)
+    embed.add_field(name="📒📝💼 XP", value=f"{data['xp']}/{need}", inline=False)
+    embed.add_field(name="📈📈🗿 Прогресс", value=progress, inline=False)
+
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text="Иди нахуй и продолжай активность")
+
+    await channel.send(embed=embed)
 
     return True
 # ---------------- EVENTS ----------------
