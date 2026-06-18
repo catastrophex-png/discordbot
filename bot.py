@@ -242,12 +242,6 @@ async def level_up(member, old_level, data):
         inline=False
     )
 
-    embed.add_field(
-        name="📈📈🗿 Прогресс",
-        value=progress,
-        inline=False
-    )
-
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.set_footer(text="Иди нахуй и продолжай активность 💪")
 
