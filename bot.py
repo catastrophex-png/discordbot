@@ -387,50 +387,46 @@ class RouletteView(discord.ui.View):
     def shoot_button(self):
         button = discord.ui.Button(label="💥 Выстрел", style=discord.ButtonStyle.danger)
 
-        async def callback(interaction: discord.Interaction):
-            if interaction.user != self.user:
-                return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
+       async def callback(interaction: discord.Interaction):
+    if interaction.user != self.user:
+        return await interaction.response.send_message("⛔ не твоя игра", ephemeral=True)
 
-            await interaction.response.defer()
+    await interaction.response.defer()
 
-            roll = random.randint(1, 7)
-            data = await get_user(interaction.user.id)
+    roll = random.randint(1, 7)
+    data = await get_user(interaction.user.id)
 
-            old_level = data["level"]
+    old_level = data["level"]
 
-            if roll <= self.bullets:
-                delta = self.penalty
-                result = "💀 БАХ! проиграл"
-            else:
-                delta = self.reward
-                result = "😮 выжил"
+    if roll <= self.bullets:
+        delta = self.penalty
+        result = "💀 БАХ! проиграл"
+    else:
+        delta = self.reward
+        result = "😮 выжил"
 
     data["xp"] += delta
 
     data["xp"], data["level"] = recalc_level(
-            data["xp"],
-            data["level"]
-    )
-
-    await update_roles(
-        interaction.user,
+        data["xp"],
         data["level"]
     )
 
-            await update_user(interaction.user.id, data["xp"], data["level"])
+    await update_user(interaction.user.id, data["xp"], data["level"])
 
-            await interaction.message.edit(
-                content=(
-                    f"🎰 Игра окончена\n\n"
-                    f"👤 {interaction.user.mention}\n"
-                    f"📊 XP: {delta:+}\n"
-                    f"⭐ {old_level} → {data['level']}\n"
-                    f"🏁 {data['xp']}/{xp_needed(data['level'])}\n\n"
-                    f"{result}"
-                ),
-                view=None
-            )
+    await update_roles(interaction.user, data["level"])
 
+    await interaction.message.edit(
+        content=(
+            f"🎰 Игра окончена\n\n"
+            f"👤 {interaction.user.mention}\n"
+            f"📊 XP: {delta:+}\n"
+            f"⭐ {old_level} → {data['level']}\n"
+            f"🏁 {data['xp']}/{xp_needed(data['level'])}\n\n"
+            f"{result}"
+        ),
+        view=None
+    )
         button.callback = callback
         return button
 
