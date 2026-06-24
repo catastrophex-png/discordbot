@@ -561,13 +561,11 @@ class TTT(discord.ui.View):
 
                 self.turn = 1 - self.turn
 
-                new_view = TTT(self.players[0], self.players[1])
-                new_view.board = self.board
-                new_view.turn = self.turn
+                self.build()
 
-                await interaction.message.edit(
+                await interaction.response.edit_message(
                     content=f"🎮 Ход: {self.players[self.turn].mention}",
-                    view=new_view
+                    view=self
                 )
 
             btn.callback = callback
