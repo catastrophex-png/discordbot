@@ -149,10 +149,10 @@ async def get_user(user_id):
         )
 
         if not row:
-           await conn.execute(
-               "INSERT INTO users (user_id, xp, level, joined) VALUES ($1, 0, 1, FALSE)",
-               user_id
-           )
+            await conn.execute(
+                "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
+                user_id
+            )
             return {"xp": 0, "level": 1}
 
         return {"xp": row["xp"], "level": row["level"]}
