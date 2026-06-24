@@ -85,6 +85,15 @@ BOT_REPLIES = [
     "солидарен",
 ]
 
+JOIN_MESSAGES = [
+    "👁️ Бродяга заметил новое существо: {user}",
+    "🌙 Кто-то припёрся: {user}",
+    "🔮 Я предвидел твоё прибытие заранее, {user}",
+    "⚠️ Добро пожаловать, {user}",
+    "✨ Новый игрок появился: {user}",
+    "💀 Сервер записал новое имя в список пидорасов: {user}",
+]
+
 # ---------------- ROLES ----------------
 
 RANK_ROLES = {
@@ -127,7 +136,8 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
             xp INT DEFAULT 0,
-            level INT DEFAULT 1
+            level INT DEFAULT 1,
+            joined BOOLEAN DEFAULT FALSE
         )
         """)
 
@@ -139,10 +149,10 @@ async def get_user(user_id):
         )
 
         if not row:
-            await conn.execute(
-                "INSERT INTO users (user_id, xp, level) VALUES ($1, 0, 1)",
-                user_id
-            )
+           await conn.execute(
+               "INSERT INTO users (user_id, xp, level, joined) VALUES ($1, 0, 1, FALSE)",
+               user_id
+           )
             return {"xp": 0, "level": 1}
 
         return {"xp": row["xp"], "level": row["level"]}
@@ -655,5 +665,38 @@ async def on_ready():
         check_afk.start()
 
     print("BOT ONLINE:", bot.user)
+
+@bot.event
+async def on_member_join(member):
+    async with db_pool.acquire() as conn:
+
+        # проверяем, есть ли пользователь в базе
+        row = await conn.fetchrow(
+            "SELECT joined FROM users WHERE user_id=$1",
+            member.id
+        )
+
+        # если уже был на сервере — ничего не делаем
+        if row and row["joined"]:
+            return
+
+        channel = bot.get_channel(1485189751878455448)
+        if not channel:
+            return
+
+        # выбираем фразу Бродяги
+        msg = random.choice(JOIN_MESSAGES).format(
+            user=member.mention
+        )
+
+        await channel.send(msg)
+
+        # отмечаем, что пользователь уже “заходил”
+        await conn.execute("""
+            INSERT INTO users (user_id, xp, level, joined)
+            VALUES ($1, 0, 1, TRUE)
+            ON CONFLICT (user_id)
+            DO UPDATE SET joined = TRUE
+        """, member.id)
 
 bot.run(os.getenv("TOKEN"))
